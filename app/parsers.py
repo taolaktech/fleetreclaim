@@ -296,11 +296,38 @@ def _line_to_toll(
     )
 
 
+def _with_wrapped_rows(lines: list[PageLine]) -> list[PageLine]:
+    """Grow each dated line's box over the continuation lines that wrap under it.
+
+    Bills wrap long descriptions onto following lines; without this a crop of the
+    row cuts that text in half.
+    """
+    grown: list[PageLine] = []
+    for index, line in enumerate(lines):
+        if line.box is None or not _parse_date(line.text):
+            grown.append(line)
+            continue
+        bottom = line.box[3]
+        for follower in lines[index + 1:]:
+            if (
+                follower.box is None
+                or follower.page != line.page
+                or _parse_date(follower.text)
+                or follower.box[1] - bottom > (line.box[3] - line.box[1])
+            ):
+                break
+            bottom = follower.box[3]
+        grown.append(
+            PageLine(line.text, line.page, (line.box[0], line.box[1], line.box[2], bottom))
+        )
+    return grown
+
+
 def parse_tolls(
     filename: str, data: bytes, known_plates: set[str]
 ) -> tuple[list[Toll], Document]:
     document = extract_document(filename, data)
-    lines = [line for line in document.lines if line.text.strip()]
+    lines = _with_wrapped_rows([line for line in document.lines if line.text.strip()])
     for table in document.tables:
         for row in table:
             joined = " ".join(cell for cell in row if cell)

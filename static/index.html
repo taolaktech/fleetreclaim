@@ -315,12 +315,7 @@ async function tripPng(trip, rows) {
   }
   const res = await fetch('/api/crop', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      parse_id: parseId,
-      title: `${trip.guest} — trip ${trip.trip_id} — ${money(trip.charge_total)}`,
-      subtitle: `${trip.vehicle} · ${String(trip.start).replace('T',' ')} → ${String(trip.end).replace('T',' ')} · ${items.length} tolls`,
-      items,
-    }),
+    body: JSON.stringify({ parse_id: parseId, items }),
   });
   if (!res.ok) {
     alert((await res.json().catch(() => ({}))).detail || 'Could not build the image.');
