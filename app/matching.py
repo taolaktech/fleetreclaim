@@ -31,6 +31,23 @@ def _norm_plate(plate: str) -> str:
     return (plate or "").upper().replace(" ", "").replace("-", "")
 
 
+# Characters OCR routinely swaps on plates.
+CONFUSABLES = str.maketrans({"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1",
+                             "Z": "2", "S": "5", "B": "8", "G": "6", "T": "7"})
+
+
+def _fuzzy_plate(plate: str) -> str:
+    return _norm_plate(plate).translate(CONFUSABLES)
+
+
+def _plates_agree(toll_plate: str, trip_plate: str, mode: str) -> bool:
+    if mode == "ignore" or not toll_plate or not trip_plate:
+        return True
+    if toll_plate == trip_plate:
+        return True
+    return mode == "fuzzy" and _fuzzy_plate(toll_plate) == _fuzzy_plate(trip_plate)
+
+
 def _candidates(
     toll: dict[str, Any],
     trips: list[dict[str, Any]],
@@ -38,6 +55,7 @@ def _candidates(
     plate: str,
     buffer_hours: float,
     date_only: bool = False,
+    plate_mode: str = "strict",
 ) -> list[tuple[int, dict[str, Any]]]:
     if stamp is None:
         return []
@@ -47,10 +65,11 @@ def _candidates(
         if window is None:
             continue
         trip_plate = _norm_plate(trip.get("plate", ""))
-        if plate and trip_plate and plate != trip_plate:
+        if not _plates_agree(plate, trip_plate, plate_mode):
             continue
         start, end = window
         if date_only or not toll.get("time"):
+            # Inclusive of both the pickup day and the return day.
             if not (start.date() <= stamp.date() <= end.date()):
                 continue
         elif not (start <= stamp <= end):
@@ -81,11 +100,23 @@ def match(
         stamp = _dt(toll.get("date", ""), toll.get("time", ""))
         plate = _norm_plate(toll.get("plate", ""))
 
-        candidates = _candidates(toll, trips, stamp, plate, buffer_hours)
-        if not candidates:
-            # Fall back to calendar-date overlap: a toll on a trip's date belongs
-            # to that trip even when the clock time sits outside the window.
-            candidates = _candidates(toll, trips, stamp, plate, buffer_hours, date_only=True)
+        # Progressively looser passes: exact plate + time window, then calendar-date
+        # overlap, then OCR-tolerant plate comparison, then date alone.
+        candidates: list[tuple[int, dict[str, Any]]] = []
+        basis = "none"
+        for date_only, plate_mode, label in (
+            (False, "strict", "plate + time"),
+            (True, "strict", "plate + trip dates"),
+            (True, "fuzzy", "similar plate + trip dates"),
+            (True, "ignore", "trip dates only"),
+        ):
+            candidates = _candidates(
+                toll, trips, stamp, plate, buffer_hours,
+                date_only=date_only, plate_mode=plate_mode,
+            )
+            if candidates:
+                basis = label
+                break
 
         charge = round(amount * (1 + markup_pct / 100) + fee_per_toll, 2)
         if not candidates:
@@ -94,10 +125,13 @@ def match(
 
         best_score = max(score for score, _ in candidates)
         best = [trip for score, trip in candidates if score == best_score]
+        # A plate that disagrees with the trip's is a guess worth eyeballing.
+        plate_conflict = bool(plate and _norm_plate(best[0].get("plate", "")) and basis == "trip dates only")
         results.append(
             {
                 **toll,
-                "status": "matched" if len(best) == 1 else "ambiguous",
+                "basis": basis,
+                "status": "matched" if len(best) == 1 and not plate_conflict else "ambiguous",
                 "trip": best[0],
                 "alternatives": [t["trip_id"] for t in best[1:]],
                 "charge": charge,

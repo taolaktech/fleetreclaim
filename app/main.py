@@ -82,13 +82,13 @@ def export(request: MatchRequest) -> StreamingResponse:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(
-        ["status", "toll_date", "toll_time", "plate", "location", "toll_amount",
+        ["status", "matched_on", "toll_date", "toll_time", "plate", "location", "toll_amount",
          "charge", "trip_id", "guest", "vehicle", "trip_start", "trip_end"]
     )
     for row in result["rows"]:
         trip = row.get("trip") or {}
         writer.writerow([
-            row["status"], row["date"], row.get("time", ""), row.get("plate", ""),
+            row["status"], row.get("basis", ""), row["date"], row.get("time", ""), row.get("plate", ""),
             row.get("location", ""), row["amount"], row["charge"],
             trip.get("trip_id", ""), trip.get("guest", ""), trip.get("vehicle", ""),
             trip.get("start", ""), trip.get("end", ""),

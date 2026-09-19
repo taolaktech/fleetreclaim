@@ -202,9 +202,10 @@ function renderResult(r) {
       : '<tr><td colspan="8" class="muted">No matches yet.</td></tr>');
 
   $('detailTable').innerHTML =
-    '<tr><th>Status</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Trip</th><th>Guest</th><th>Charge</th></tr>' +
+    '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Trip</th><th>Guest</th><th>Charge</th></tr>' +
     r.rows.map(row => `
       <tr><td><span class="pill ${row.status}">${row.status}</span></td>
+      <td class="muted">${row.basis || '—'}</td>
       <td>${row.date}</td><td>${row.time || ''}</td><td>${row.plate || ''}</td>
       <td>${row.location || ''}</td><td>${money(row.amount)}</td>
       <td>${row.trip ? row.trip.trip_id : '—'}${row.alternatives && row.alternatives.length ? ' <span class="muted">+' + row.alternatives.length + ' other</span>' : ''}</td>
