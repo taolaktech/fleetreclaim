@@ -17,7 +17,7 @@
   label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
   input, button { font:inherit; }
-  input[type=file], input[type=number], input[type=text] { width:100%; background:#0d1017; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; }
+  input[type=file], input[type=number], input[type=text], input[type=date], select { width:100%; background:#0d1017; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; }
   button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:9px 16px; cursor:pointer; }
   button.secondary { background:#2a2f3a; }
   button:disabled { opacity:.5; cursor:not-allowed; }
@@ -87,8 +87,16 @@
   <section id="resultSection" class="hidden">
     <h2>5. What to charge</h2>
     <p class="muted">Ambiguous tolls fit more than one trip; they are charged in full to the best-ranked trip — check them. Unmatched tolls fall outside every trip's dates and are charged to nobody.</p>
+    <div class="grid" style="margin-bottom:16px">
+      <div><label>From date</label><input id="fFrom" type="date" /></div>
+      <div><label>To date</label><input id="fTo" type="date" /></div>
+      <div><label>Vehicle</label><select id="fVehicle"></select></div>
+      <div><label>Plate</label><select id="fPlate"></select></div>
+      <div><label>Trip #</label><input id="fTrip" type="text" placeholder="e.g. 58691937" /></div>
+      <div style="align-self:end"><button id="clearFilters" class="secondary">Clear filters</button></div>
+    </div>
     <div class="cards" id="cards"></div>
-    <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button></div>
+    <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button> <span class="muted" id="filterNote"></span></div>
     <div class="scroll"><table id="chargeTable"></table></div>
     <h2 style="margin-top:22px">Per-toll detail</h2>
     <div class="scroll"><table id="detailTable"></table></div>
@@ -129,7 +137,7 @@ $('parseBtn').onclick = async () => {
     $('parseStatus').textContent = `${tolls.length} toll line items, ${trips.length} trips.`;
     $('rawText').textContent = Object.entries(data.raw_text).map(([k, v]) => `--- ${k} ---\n${v}`).join('\n\n');
     ['settings','tollSection','tripSection','resultSection','rawSection'].forEach(id => $(id).classList.remove('hidden'));
-    renderTolls(); renderTrips(); runMatch();
+    renderTolls(); renderTrips(); populateFilters(); await runMatch();
   } catch (e) {
     $('parseStatus').textContent = 'Error: ' + e.message;
   } finally { $('parseBtn').disabled = false; }
@@ -180,8 +188,71 @@ async function runMatch() {
     body: JSON.stringify({ tolls, trips, ...settings() }),
   });
   lastResult = await res.json();
-  renderResult(lastResult);
+  renderResult(filtered());
 }
+
+function populateFilters() {
+  const fill = (el, values) => {
+    const current = el.value;
+    el.innerHTML = '<option value="">All</option>' + values.map(v => `<option>${v}</option>`).join('');
+    el.value = values.includes(current) ? current : '';
+  };
+  fill($('fVehicle'), [...new Set(trips.map(t => t.vehicle).filter(Boolean))].sort());
+  fill($('fPlate'), [...new Set([...trips.map(t => t.plate), ...tolls.map(t => t.plate)].filter(Boolean))].sort());
+}
+
+/** Re-derive rows, trip totals and summary for the current filter selection. */
+function filtered() {
+  if (!lastResult) return { rows: [], trips: [], summary: { toll_count: 0, matched: 0, ambiguous: 0, unmatched: 0, toll_total: 0, charge_total: 0, unmatched_total: 0 } };
+  const from = $('fFrom').value, to = $('fTo').value;
+  const vehicle = $('fVehicle').value, plate = $('fPlate').value;
+  const tripQuery = $('fTrip').value.trim().toLowerCase();
+  const active = from || to || vehicle || plate || tripQuery;
+
+  const rows = lastResult.rows.filter(row => {
+    const trip = row.trip || {};
+    if (from && row.date < from) return false;
+    if (to && row.date > to) return false;
+    if (vehicle && trip.vehicle !== vehicle) return false;
+    if (plate && trip.plate !== plate && (row.plate || '') !== plate) return false;
+    if (tripQuery && !String(trip.trip_id || '').toLowerCase().includes(tripQuery)) return false;
+    return true;
+  });
+
+  const byTrip = new Map();
+  for (const row of rows) {
+    if (row.status === 'unmatched') continue;
+    const t = row.trip;
+    if (!byTrip.has(t.trip_id)) byTrip.set(t.trip_id, { ...t, toll_count: 0, toll_total: 0, charge_total: 0 });
+    const bucket = byTrip.get(t.trip_id);
+    bucket.toll_count += 1;
+    bucket.toll_total = +(bucket.toll_total + Number(row.amount)).toFixed(2);
+    bucket.charge_total = +(bucket.charge_total + Number(row.charge)).toFixed(2);
+  }
+  const sum = (list, key) => +list.reduce((acc, r) => acc + Number(r[key] || 0), 0).toFixed(2);
+  const unmatched = rows.filter(r => r.status === 'unmatched');
+  $('filterNote').textContent = active ? `filtered: ${rows.length} of ${lastResult.rows.length} tolls` : '';
+  return {
+    rows,
+    trips: [...byTrip.values()].sort((a, b) => String(a.start).localeCompare(String(b.start))),
+    summary: {
+      toll_count: rows.length,
+      matched: rows.filter(r => r.status === 'matched').length,
+      ambiguous: rows.filter(r => r.status === 'ambiguous').length,
+      unmatched: unmatched.length,
+      toll_total: sum(rows, 'amount'),
+      charge_total: sum(rows, 'charge'),
+      unmatched_total: sum(unmatched, 'amount'),
+    },
+  };
+}
+
+['fFrom','fTo','fTrip'].forEach(id => $(id).oninput = () => renderResult(filtered()));
+['fVehicle','fPlate'].forEach(id => $(id).onchange = () => renderResult(filtered()));
+$('clearFilters').onclick = () => {
+  ['fFrom','fTo','fTrip','fVehicle','fPlate'].forEach(id => $(id).value = '');
+  renderResult(filtered());
+};
 
 function renderResult(r) {
   const s = r.summary;
@@ -212,13 +283,21 @@ function renderResult(r) {
       <td>${row.trip ? row.trip.guest : ''}</td><td>${money(row.charge)}</td></tr>`).join('');
 }
 
-$('exportBtn').onclick = async () => {
-  const res = await fetch('/api/export', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tolls, trips, ...settings() }),
-  });
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+// Export mirrors what is on screen, so filters apply to the CSV too.
+$('exportBtn').onclick = () => {
+  const r = filtered();
+  const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [
+    ['status','matched_on','toll_date','toll_time','plate','location','toll_amount','charge','trip_id','guest','vehicle','trip_start','trip_end'].join(','),
+    ...r.rows.map(row => [row.status, row.basis || '', row.date, row.time || '', row.plate || '', row.location || '',
+      row.amount, row.charge, row.trip ? row.trip.trip_id : '', row.trip ? row.trip.guest : '',
+      row.trip ? row.trip.vehicle : '', row.trip ? row.trip.start : '', row.trip ? row.trip.end : ''].map(cell).join(',')),
+    '',
+    'TRIP TOTALS',
+    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','charge_total'].join(','),
+    ...r.trips.map(t => [t.trip_id, t.guest, t.vehicle, t.plate, t.start, t.end, t.toll_count, t.toll_total, t.charge_total].map(cell).join(',')),
+  ];
+  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
   const a = document.createElement('a');
   a.href = url; a.download = 'toll-charges.csv'; a.click();
   URL.revokeObjectURL(url);
