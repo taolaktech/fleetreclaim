@@ -3,6 +3,7 @@
 import csv
 from pathlib import Path
 
+import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = Path(__file__).resolve().parent
@@ -16,18 +17,20 @@ ROWS = [
     ("03/21/2026", "09:20 AM", "PLT9900", "Orlando SR-417", "3.25"),
 ]
 
+# Turo exports carry the plate inside the vehicle label rather than its own column.
 TRIPS = [
-    ["Reservation ID", "Guest", "Vehicle", "License plate", "Trip start", "Trip end"],
-    ["R-1001", "Dana Reyes", "2021 Tesla Model 3", "KJL4821", "2026-03-01 15:00", "2026-03-03 11:00"],
-    ["R-1002", "Miguel Ortiz", "2022 Toyota RAV4", "8XYZ123", "2026-03-04 09:00", "2026-03-06 18:00"],
-    ["R-1003", "Priya Shah", "2021 Tesla Model 3", "KJL4821", "2026-03-08 12:00", "2026-03-10 10:00"],
-    ["R-1004", "Chris Okafor", "2022 Toyota RAV4", "8XYZ123", "2026-03-13 16:00", "2026-03-15 12:00"],
+    ["Reservation ID", "Guest", "Vehicle", "Trip start", "Trip end"],
+    ["R-1001", "Dana Reyes", "Taofeek's Tesla (TX #KJL4821)", "2026-03-01 15:00", "2026-03-03 11:00"],
+    ["R-1002", "Miguel Ortiz", "Taofeek's RAV4 (CA #8XYZ123)", "2026-03-04 09:00", "2026-03-06 18:00"],
+    ["R-1003", "Priya Shah", "Taofeek's Tesla (TX #KJL4821)", "2026-03-08 12:00", "2026-03-10 10:00"],
+    ["R-1004", "Chris Okafor", "Taofeek's RAV4 (CA #8XYZ123)", "2026-03-13 16:00", "2026-03-15 12:00"],
 ]
 
 
-def write_csv() -> None:
+def write_trips() -> None:
     with (HERE / "turo_trips.csv").open("w", newline="") as handle:
         csv.writer(handle).writerows(TRIPS)
+    pd.DataFrame(TRIPS[1:], columns=TRIPS[0]).to_excel(HERE / "turo_trips.xlsx", index=False)
 
 
 def render_bill() -> Image.Image:
@@ -53,7 +56,7 @@ def render_bill() -> Image.Image:
 
 
 def main() -> None:
-    write_csv()
+    write_trips()
     bill = render_bill()
     bill.save(HERE / "toll_bill.png")
     bill.save(HERE / "toll_bill.pdf", "PDF", resolution=150)

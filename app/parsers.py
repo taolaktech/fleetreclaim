@@ -15,6 +15,8 @@ import pytesseract
 from PIL import Image
 
 MONEY = re.compile(r"\$?\s?(\d{1,3}(?:,\d{3})*\.\d{2})")
+# Turo vehicle labels embed the plate, e.g. "Taofeek's Nissan (TX #VCG6008)".
+EMBEDDED_PLATE = re.compile(r"#\s*([A-Z0-9][A-Z0-9 -]{2,10})", re.IGNORECASE)
 PLATE = re.compile(r"\b(?=[A-Z0-9-]{5,9}\b)(?=.*\d)[A-Z0-9][A-Z0-9-]{3,8}\b")
 DATE_PATTERNS = [
     (re.compile(r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b"), ["%m/%d/%Y", "%m/%d/%y"]),
@@ -288,6 +290,24 @@ def _to_iso(value: Any) -> str:
     return parsed.strftime("%Y-%m-%dT00:00")
 
 
+def _clean_plate(value: str) -> str:
+    plate = value.strip().upper().replace(" ", "").replace("-", "")
+    return "" if plate in {"NAN", "NONE"} else plate
+
+
+def _plate_from_vehicle(vehicle: str) -> str:
+    """Pull the plate out of a Turo vehicle label such as "Nissan (TX #VCG6008)"."""
+    match = EMBEDDED_PLATE.search(vehicle)
+    if match:
+        return _clean_plate(match.group(1).split(")")[0])
+    inside = re.findall(r"\(([^)]*)\)", vehicle)
+    for group in reversed(inside):
+        candidate = _clean_plate(group.split()[-1]) if group.split() else ""
+        if len(candidate) >= 5 and any(char.isdigit() for char in candidate):
+            return candidate
+    return ""
+
+
 def parse_trips(filename: str, data: bytes) -> list[Trip]:
     frame = _read_table(filename, data)
     frame.columns = [str(column).strip() for column in frame.columns]
@@ -306,14 +326,17 @@ def parse_trips(filename: str, data: bytes) -> list[Trip]:
         end = _to_iso(row.get(end_col)) if end_col else ""
         if not start and not end:
             continue
-        plate = str(row.get(plate_col) or "").strip().upper().replace(" ", "").replace("-", "")
+        vehicle = str(row.get(vehicle_col) or "").strip()
+        plate = _clean_plate(str(row.get(plate_col) or "")) if plate_col else ""
+        if not plate:
+            plate = _plate_from_vehicle(vehicle)
         trips.append(
             Trip(
                 row_id=len(trips),
                 trip_id=str(row.get(id_col) or f"row-{index + 2}").strip(),
                 guest=str(row.get(guest_col) or "").strip(),
-                vehicle=str(row.get(vehicle_col) or "").strip(),
-                plate="" if plate.lower() == "nan" else plate,
+                vehicle=vehicle,
+                plate=plate,
                 start=start,
                 end=end or start,
                 raw={k: ("" if pd.isna(v) else str(v)) for k, v in row.items()},
