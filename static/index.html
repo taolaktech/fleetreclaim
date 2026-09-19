@@ -35,9 +35,10 @@
   .card b { display:block; font-size:20px; margin-top:4px; }
   .muted { color:var(--muted); }
   .toll-link { background:none; border:0; padding:0; color:var(--accent); font:inherit; cursor:pointer; text-decoration:underline; }
-  .subrow > td { background:#0d1017; }
-  .subrow table { margin:0; }
-  .subrow th, .subrow td { font-size:12px; }
+  .backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; z-index:10; }
+  .modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; width:min(900px,100%); }
+  .modal h3 { margin:0 0 4px; font-size:16px; }
+  .modal .cards { margin:14px 0; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   details summary { cursor:pointer; color:var(--muted); }
   pre { white-space:pre-wrap; background:#0d1017; padding:10px; border-radius:6px; max-height:300px; overflow:auto; font-size:12px; }
@@ -119,6 +120,20 @@
     <div class="scroll"><table id="detailTable"></table></div>
   </section>
 
+  <div id="tripModal" class="backdrop hidden">
+    <div class="modal">
+      <div class="row" style="justify-content:space-between; align-items:flex-start">
+        <div id="modalHead"></div>
+        <div class="row">
+          <button id="modalCsv" class="secondary">Download CSV</button>
+          <button id="modalClose" class="secondary">Close</button>
+        </div>
+      </div>
+      <div class="cards" id="modalCards"></div>
+      <table id="modalTable"></table>
+    </div>
+  </div>
+
   <section id="rawSection" class="hidden">
     <details><summary>Raw extracted text (debug)</summary><pre id="rawText"></pre></details>
   </section>
@@ -126,7 +141,6 @@
 
 <script>
 let tolls = [], trips = [], lastResult = null;
-const expanded = new Set();
 const $ = id => document.getElementById(id);
 const money = n => '$' + Number(n || 0).toFixed(2);
 
@@ -274,18 +288,58 @@ $('clearFilters').onclick = () => {
   renderResult(filtered());
 };
 
-/** Nested table of the toll line items behind a trip's toll count. */
-function tripDetailRow(trip, rows) {
-  const items = rows.filter(row => row.trip && String(row.trip.trip_id) === String(trip.trip_id));
-  return `<tr class="subrow"><td colspan="8">
-    <table>
-      <tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Charge</th></tr>
-      ${items.map(row => `<tr><td><span class="pill ${row.status}">${row.status}</span></td>
-        <td class="muted">${row.basis || '—'}</td><td>${row.date}</td><td>${row.time || ''}</td>
-        <td>${row.plate || ''}</td><td>${row.location || ''}</td>
-        <td>${money(row.amount)}</td><td>${money(row.charge)}</td></tr>`).join('')}
-    </table></td></tr>`;
+const tollsOf = (tripId, rows) =>
+  rows.filter(row => row.trip && String(row.trip.trip_id) === String(tripId));
+
+function download(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
 }
+
+const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+/** One guest's statement: trip header, then a line per toll. */
+function tripCsv(trip, rows) {
+  const items = tollsOf(trip.trip_id, rows);
+  const lines = [
+    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','charge_total'].join(','),
+    [trip.trip_id, trip.guest, trip.vehicle, trip.plate, trip.start, trip.end,
+     items.length, trip.toll_total, trip.charge_total].map(csvCell).join(','),
+    '',
+    ['status','matched_on','date','time','plate','location','amount','charge'].join(','),
+    ...items.map(row => [row.status, row.basis || '', row.date, row.time || '', row.plate || '',
+      row.location || '', row.amount, row.charge].map(csvCell).join(',')),
+  ];
+  download(`tolls-${trip.trip_id}.csv`, lines.join('\n'));
+}
+
+/** Screenshot-friendly breakdown of everything charged to one trip. */
+function openTripModal(trip, rows) {
+  const items = tollsOf(trip.trip_id, rows);
+  $('modalHead').innerHTML = `
+    <h3>${trip.guest} — trip ${trip.trip_id}</h3>
+    <div class="muted">${trip.vehicle} · ${trip.plate || 'no plate'} ·
+      ${String(trip.start).replace('T',' ')} → ${String(trip.end).replace('T',' ')}</div>`;
+  $('modalCards').innerHTML = `
+    <div class="card"><span class="muted">Tolls</span><b>${items.length}</b></div>
+    <div class="card"><span class="muted">Toll total</span><b>${money(trip.toll_total)}</b></div>
+    <div class="card"><span class="muted">Charge guest</span><b>${money(trip.charge_total)}</b></div>`;
+  $('modalTable').innerHTML =
+    '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Charge</th></tr>' +
+    items.map(row => `<tr><td><span class="pill ${row.status}">${row.status}</span></td>
+      <td class="muted">${row.basis || '—'}</td><td>${row.date}</td><td>${row.time || ''}</td>
+      <td>${row.plate || ''}</td><td>${row.location || ''}</td>
+      <td>${money(row.amount)}</td><td>${money(row.charge)}</td></tr>`).join('');
+  $('modalCsv').onclick = () => tripCsv(trip, rows);
+  $('tripModal').classList.remove('hidden');
+}
+
+const closeModal = () => $('tripModal').classList.add('hidden');
+$('modalClose').onclick = closeModal;
+$('tripModal').onclick = e => { if (e.target.id === 'tripModal') closeModal(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 function renderResult(r) {
   const s = r.summary;
@@ -300,18 +354,19 @@ function renderResult(r) {
   $('chargeTable').innerHTML =
     '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Tolls</th><th>Toll total</th><th>Charge guest</th></tr>' +
     (r.trips.length ? r.trips.map(t => `
-      <tr><td>${t.trip_id}</td><td>${t.guest}</td><td>${t.vehicle}</td><td>${t.plate}</td>
+      <tr><td>${t.trip_id}</td>
+      <td>${t.guest} <button type="button" class="toll-link" data-csv="${t.trip_id}">CSV</button></td>
+      <td>${t.vehicle}</td><td>${t.plate}</td>
       <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
       <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
-      <td>${money(t.toll_total)}</td><td><b>${money(t.charge_total)}</b></td></tr>
-      ${expanded.has(String(t.trip_id)) ? tripDetailRow(t, r.rows) : ''}`).join('')
+      <td>${money(t.toll_total)}</td><td><b>${money(t.charge_total)}</b></td></tr>`).join('')
       : '<tr><td colspan="8" class="muted">No matches yet.</td></tr>');
 
   $('chargeTable').onclick = e => {
-    const id = e.target.dataset.trip;
-    if (!id) return;
-    expanded.has(id) ? expanded.delete(id) : expanded.add(id);
-    renderResult(filtered());
+    const { trip: openId, csv: csvId } = e.target.dataset;
+    const trip = r.trips.find(t => String(t.trip_id) === (openId || csvId));
+    if (!trip) return;
+    openId ? openTripModal(trip, r.rows) : tripCsv(trip, r.rows);
   };
 
   // The detail table has its own plate/status filters on top of the section filters.
@@ -338,7 +393,7 @@ function renderResult(r) {
 // Export mirrors what is on screen, so filters apply to the CSV too.
 $('exportBtn').onclick = () => {
   const r = filtered();
-  const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const cell = csvCell;
   const lines = [
     ['status','matched_on','toll_date','toll_time','plate','location','toll_amount','charge','trip_id','guest','vehicle','trip_start','trip_end'].join(','),
     ...r.rows.map(row => [row.status, row.basis || '', row.date, row.time || '', row.plate || '', row.location || '',
@@ -349,10 +404,7 @@ $('exportBtn').onclick = () => {
     ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','charge_total'].join(','),
     ...r.trips.map(t => [t.trip_id, t.guest, t.vehicle, t.plate, t.start, t.end, t.toll_count, t.toll_total, t.charge_total].map(cell).join(',')),
   ];
-  const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = 'toll-charges.csv'; a.click();
-  URL.revokeObjectURL(url);
+  download('toll-charges.csv', lines.join('\n'));
 };
 </script>
 </body>

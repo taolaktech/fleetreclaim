@@ -70,13 +70,25 @@ def main() -> int:
         assert trip_rows == 4, trip_rows  # detail filters must not touch the charge table
 
         page.click("#clearFilters")
-        page.click("#chargeTable .toll-link >> nth=0")
-        page.wait_for_selector("#chargeTable .subrow", timeout=5_000)
-        sub = page.locator("#chargeTable .subrow table tr").count() - 1
-        print("expanded toll line items:", sub, "|", page.locator("#chargeTable .toll-link").first.inner_text())
-        assert sub == int(page.locator("#chargeTable .toll-link").first.inner_text())
-        page.click("#chargeTable .toll-link >> nth=0")
-        assert page.locator("#chargeTable .subrow").count() == 0
+        count_link = page.locator("#chargeTable [data-trip]").first
+        expected = int(count_link.inner_text())
+        count_link.click()
+        page.wait_for_selector("#tripModal:not(.hidden)", timeout=5_000)
+        modal_rows = page.locator("#modalTable tr").count() - 1
+        print("modal:", page.locator("#modalHead").inner_text().replace("\n", " | "), "| rows:", modal_rows)
+        assert modal_rows == expected, (modal_rows, expected)
+        with page.expect_download() as trip_dl:
+            page.click("#modalCsv")
+        trip_csv = HERE / "trip_check.csv"
+        trip_dl.value.save_as(str(trip_csv))
+        print("per-trip csv:", trip_dl.value.suggested_filename, len(trip_csv.read_text().splitlines()), "lines")
+        page.keyboard.press("Escape")
+        page.wait_for_selector("#tripModal.hidden", state="attached", timeout=5_000)
+
+        with page.expect_download() as guest_dl:
+            page.click("#chargeTable [data-csv] >> nth=0")
+        print("guest row csv:", guest_dl.value.suggested_filename)
+        assert page.locator("#tripModal.hidden").count() == 1
 
         with page.expect_download() as download:
             page.click("#exportBtn")
