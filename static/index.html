@@ -318,7 +318,11 @@ function renderResult(r) {
   const dPlate = $('dPlate').value, dStatus = $('dStatus').value;
   const detailRows = r.rows.filter(row =>
     (!dPlate || (row.plate || '') === dPlate) && (!dStatus || row.status === dStatus));
-  $('detailNote').textContent = (dPlate || dStatus) ? `showing ${detailRows.length} of ${r.rows.length}` : '';
+  const detailSum = key => detailRows.reduce((acc, row) => acc + Number(row[key] || 0), 0);
+  $('detailNote').innerHTML =
+    `<b>${detailRows.length}</b> toll${detailRows.length === 1 ? '' : 's'}` +
+    ((dPlate || dStatus) ? ` of ${r.rows.length}` : '') +
+    ` · toll total <b>${money(detailSum('amount'))}</b> · charged <b>${money(detailSum('charge'))}</b>`;
 
   $('detailTable').innerHTML =
     '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Trip</th><th>Guest</th><th>Charge</th></tr>' +
