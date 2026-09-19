@@ -15,7 +15,9 @@ how much to charge the guest.
    inside the trip window (± a configurable buffer, default 2h). If nothing matches on
    time, the toll falls back to calendar-date overlap with the trip. Tolls that fit several
    trips equally well are charged in full to the best-ranked one and flagged `ambiguous`;
-   only tolls outside every trip's dates stay `unmatched` and are charged to nobody.
+   tolls outside every trip's dates, or whose plate contradicts every candidate trip's
+   plate, stay `unmatched` and are charged to nobody. Statement lines that are not tolls
+   (tag-store rebills, card auto-charges) are dropped while parsing.
 4. **Charge** — optional markup % and per-toll admin fee are applied; totals roll up per
    trip and export to CSV.
 
