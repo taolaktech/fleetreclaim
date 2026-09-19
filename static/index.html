@@ -34,6 +34,10 @@
   .card { background:#0d1017; border:1px solid var(--line); border-radius:8px; padding:12px; }
   .card b { display:block; font-size:20px; margin-top:4px; }
   .muted { color:var(--muted); }
+  .toll-link { background:none; border:0; padding:0; color:var(--accent); font:inherit; cursor:pointer; text-decoration:underline; }
+  .subrow > td { background:#0d1017; }
+  .subrow table { margin:0; }
+  .subrow th, .subrow td { font-size:12px; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   details summary { cursor:pointer; color:var(--muted); }
   pre { white-space:pre-wrap; background:#0d1017; padding:10px; border-radius:6px; max-height:300px; overflow:auto; font-size:12px; }
@@ -109,6 +113,7 @@
 
 <script>
 let tolls = [], trips = [], lastResult = null;
+const expanded = new Set();
 const $ = id => document.getElementById(id);
 const money = n => '$' + Number(n || 0).toFixed(2);
 
@@ -254,6 +259,19 @@ $('clearFilters').onclick = () => {
   renderResult(filtered());
 };
 
+/** Nested table of the toll line items behind a trip's toll count. */
+function tripDetailRow(trip, rows) {
+  const items = rows.filter(row => row.trip && String(row.trip.trip_id) === String(trip.trip_id));
+  return `<tr class="subrow"><td colspan="8">
+    <table>
+      <tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Charge</th></tr>
+      ${items.map(row => `<tr><td><span class="pill ${row.status}">${row.status}</span></td>
+        <td class="muted">${row.basis || '—'}</td><td>${row.date}</td><td>${row.time || ''}</td>
+        <td>${row.plate || ''}</td><td>${row.location || ''}</td>
+        <td>${money(row.amount)}</td><td>${money(row.charge)}</td></tr>`).join('')}
+    </table></td></tr>`;
+}
+
 function renderResult(r) {
   const s = r.summary;
   $('cards').innerHTML = `
@@ -269,8 +287,17 @@ function renderResult(r) {
     (r.trips.length ? r.trips.map(t => `
       <tr><td>${t.trip_id}</td><td>${t.guest}</td><td>${t.vehicle}</td><td>${t.plate}</td>
       <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
-      <td>${t.toll_count}</td><td>${money(t.toll_total)}</td><td><b>${money(t.charge_total)}</b></td></tr>`).join('')
+      <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
+      <td>${money(t.toll_total)}</td><td><b>${money(t.charge_total)}</b></td></tr>
+      ${expanded.has(String(t.trip_id)) ? tripDetailRow(t, r.rows) : ''}`).join('')
       : '<tr><td colspan="8" class="muted">No matches yet.</td></tr>');
+
+  $('chargeTable').onclick = e => {
+    const id = e.target.dataset.trip;
+    if (!id) return;
+    expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+    renderResult(filtered());
+  };
 
   $('detailTable').innerHTML =
     '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Trip</th><th>Guest</th><th>Charge</th></tr>' +

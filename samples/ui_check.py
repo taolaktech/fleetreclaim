@@ -52,6 +52,15 @@ def main() -> int:
         print("vehicle filter rows:", rows(), shown)
         assert rows() > 0 and set(shown) == {rav4}, shown
 
+        page.click("#clearFilters")
+        page.click("#chargeTable .toll-link >> nth=0")
+        page.wait_for_selector("#chargeTable .subrow", timeout=5_000)
+        sub = page.locator("#chargeTable .subrow table tr").count() - 1
+        print("expanded toll line items:", sub, "|", page.locator("#chargeTable .toll-link").first.inner_text())
+        assert sub == int(page.locator("#chargeTable .toll-link").first.inner_text())
+        page.click("#chargeTable .toll-link >> nth=0")
+        assert page.locator("#chargeTable .subrow").count() == 0
+
         with page.expect_download() as download:
             page.click("#exportBtn")
         out = HERE / "export_check.csv"
