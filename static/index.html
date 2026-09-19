@@ -125,6 +125,7 @@
       <div class="row" style="justify-content:space-between; align-items:flex-start">
         <div id="modalHead"></div>
         <div class="row">
+          <button id="modalPng" class="secondary">Download bill PNG</button>
           <button id="modalCsv" class="secondary">Download CSV</button>
           <button id="modalClose" class="secondary">Close</button>
         </div>
@@ -140,7 +141,7 @@
 </main>
 
 <script>
-let tolls = [], trips = [], lastResult = null;
+let tolls = [], trips = [], lastResult = null, parseId = '';
 const $ = id => document.getElementById(id);
 const money = n => '$' + Number(n || 0).toFixed(2);
 
@@ -164,6 +165,7 @@ $('parseBtn').onclick = async () => {
     const res = await fetch('/api/parse', { method: 'POST', body: form });
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
     const data = await res.json();
+    parseId = data.parse_id;
     tolls = data.tolls.map(t => ({ ...t, ignored: false }));
     trips = data.trips;
     $('parseStatus').textContent = `${tolls.length} toll line items, ${trips.length} trips.`;
@@ -291,11 +293,40 @@ $('clearFilters').onclick = () => {
 const tollsOf = (tripId, rows) =>
   rows.filter(row => row.trip && String(row.trip.trip_id) === String(tripId));
 
-function download(name, text) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+function downloadBlob(name, blob) {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = name; a.click();
   URL.revokeObjectURL(url);
+}
+
+const download = (name, text) =>
+  downloadBlob(name, new Blob([text], { type: 'text/csv' }));
+
+/** Crop this trip's rows out of the original bill, stacked into one PNG. */
+async function tripPng(trip, rows) {
+  const items = tollsOf(trip.trip_id, rows)
+    .filter(row => row.box && row.page >= 0)
+    .sort((a, b) => a.page - b.page || a.box[1] - b.box[1])
+    .map(row => ({ source: row.source, page: row.page, box: row.box }));
+  if (!items.length) {
+    alert('No image rows for this trip — the bill was a CSV/text file, or these rows came from a table without positions.');
+    return;
+  }
+  const res = await fetch('/api/crop', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      parse_id: parseId,
+      title: `${trip.guest} — trip ${trip.trip_id} — ${money(trip.charge_total)}`,
+      subtitle: `${trip.vehicle} · ${String(trip.start).replace('T',' ')} → ${String(trip.end).replace('T',' ')} · ${items.length} tolls`,
+      items,
+    }),
+  });
+  if (!res.ok) {
+    alert((await res.json().catch(() => ({}))).detail || 'Could not build the image.');
+    return;
+  }
+  downloadBlob(`tolls-${trip.trip_id}.png`, await res.blob());
 }
 
 const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -333,6 +364,7 @@ function openTripModal(trip, rows) {
       <td>${row.plate || ''}</td><td>${row.location || ''}</td>
       <td>${money(row.amount)}</td><td>${money(row.charge)}</td></tr>`).join('');
   $('modalCsv').onclick = () => tripCsv(trip, rows);
+  $('modalPng').onclick = () => tripPng(trip, rows);
   $('tripModal').classList.remove('hidden');
 }
 
@@ -355,7 +387,7 @@ function renderResult(r) {
     '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Tolls</th><th>Toll total</th><th>Charge guest</th></tr>' +
     (r.trips.length ? r.trips.map(t => `
       <tr><td>${t.trip_id}</td>
-      <td>${t.guest} <button type="button" class="toll-link" data-csv="${t.trip_id}">CSV</button></td>
+      <td>${t.guest} <button type="button" class="toll-link" data-png="${t.trip_id}">PNG</button></td>
       <td>${t.vehicle}</td><td>${t.plate}</td>
       <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
       <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
@@ -363,10 +395,10 @@ function renderResult(r) {
       : '<tr><td colspan="8" class="muted">No matches yet.</td></tr>');
 
   $('chargeTable').onclick = e => {
-    const { trip: openId, csv: csvId } = e.target.dataset;
-    const trip = r.trips.find(t => String(t.trip_id) === (openId || csvId));
+    const { trip: openId, png: pngId } = e.target.dataset;
+    const trip = r.trips.find(t => String(t.trip_id) === (openId || pngId));
     if (!trip) return;
-    openId ? openTripModal(trip, r.rows) : tripCsv(trip, r.rows);
+    openId ? openTripModal(trip, r.rows) : tripPng(trip, r.rows);
   };
 
   // The detail table has its own plate/status filters on top of the section filters.

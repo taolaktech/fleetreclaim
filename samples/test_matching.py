@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.matching import match  # noqa: E402
-from app.parsers import _line_to_toll  # noqa: E402
+from app.parsers import PageLine, _line_to_toll  # noqa: E402
 
 TRIP = {
     "trip_id": "58691937",
@@ -66,8 +66,9 @@ def main() -> int:
     assert result["rows"][0]["charge"] == 2.5
 
     # Account-activity lines are dropped before matching ever sees them.
-    assert _line_to_toll("07/31/2026 10:29 CDT REBILL TAG STORE AutoCharge: MASTERCARD $80.00", 0, "f", set()) is None
-    assert _line_to_toll("07/30/2026 11:32 TJM5546 290-GILESMLWB $1.53", 0, "f", set()) is not None
+    as_line = lambda text: PageLine(text, 0, (0, 0, 10, 10))
+    assert _line_to_toll(as_line("07/31/2026 10:29 CDT REBILL TAG STORE AutoCharge: MASTERCARD $80.00"), 0, "f", set()) is None
+    assert _line_to_toll(as_line("07/30/2026 11:32 TJM5546 290-GILESMLWB $1.53"), 0, "f", set()) is not None
 
     # Markup and fee apply to every charged toll.
     result = match([toll(time="12:00")], [TRIP], markup_pct=10, fee_per_toll=1)

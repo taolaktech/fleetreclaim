@@ -38,6 +38,18 @@ PLATE_STOPWORDS = {
 }
 
 
+PDF_RENDER_DPI = 150
+
+
+@dataclass
+class PageLine:
+    """One visual line of a bill plus where it sits on the rendered page."""
+
+    text: str
+    page: int
+    box: tuple[int, int, int, int] | None   # left, top, right, bottom in page-image pixels
+
+
 @dataclass
 class Toll:
     row_id: int
@@ -48,6 +60,8 @@ class Toll:
     location: str
     source: str
     raw: str
+    page: int = -1     # page of the rendered bill this line came from, -1 if unknown
+    box: list[int] | None = None
 
     def dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -71,82 +85,128 @@ class Trip:
 # --------------------------------------------------------------------------- text
 
 
-def _ocr_lines(image: Image.Image) -> str:
-    """OCR an image and rebuild visual rows from word boxes.
+def _ocr_line_boxes(image: Image.Image, page: int) -> list[PageLine]:
+    """OCR one page image into visual lines with their pixel bounding boxes."""
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    words = [
+        {
+            "text": data["text"][i].strip(),
+            "left": data["left"][i],
+            "top": data["top"][i],
+            "right": data["left"][i] + data["width"][i],
+            "bottom": data["top"][i] + data["height"][i],
+            "mid": data["top"][i] + data["height"][i] / 2,
+            "h": data["height"][i],
+        }
+        for i in range(len(data["text"]))
+        if data["text"][i].strip()
+    ]
+    return _group_words(words, page)
 
-    Tesseract's block ordering reads tabular bills column by column, which
-    separates a toll's date from its plate and amount. Grouping words by their
-    vertical centre restores one line per toll.
-    """
+
+def _group_words(words: list[dict[str, Any]], page: int) -> list[PageLine]:
+    """Group word boxes into lines by vertical centre."""
+    if not words:
+        return []
+    heights = sorted(word["h"] for word in words)
+    tolerance = max(6.0, heights[len(heights) // 2] * 0.6)
+    rows: list[list[dict[str, Any]]] = []
+    for word in sorted(words, key=lambda w: w["mid"]):
+        if rows and abs(word["mid"] - rows[-1][0]["mid"]) <= tolerance:
+            rows[-1].append(word)
+        else:
+            rows.append([word])
+    lines: list[PageLine] = []
+    for row in rows:
+        ordered = sorted(row, key=lambda w: w["left"])
+        lines.append(
+            PageLine(
+                text=" ".join(w["text"] for w in ordered),
+                page=page,
+                box=(
+                    int(min(w["left"] for w in row)),
+                    int(min(w["top"] for w in row)),
+                    int(max(w["right"] for w in row)),
+                    int(max(w["bottom"] for w in row)),
+                ),
+            )
+        )
+    return lines
+
+
+def _render_pdf_pages(data: bytes) -> list[Image.Image]:
+    with tempfile.TemporaryDirectory() as tmp:
+        pdf_path = Path(tmp) / "in.pdf"
+        pdf_path.write_bytes(data)
+        subprocess.run(
+            ["pdftoppm", "-r", str(PDF_RENDER_DPI), "-png", str(pdf_path), str(Path(tmp) / "page")],
+            check=True,
+            capture_output=True,
+        )
+        return [Image.open(p).copy() for p in sorted(Path(tmp).glob("page*.png"))]
+
+
+def _pdf_text_lines(data: bytes) -> tuple[list[PageLine], list[list[list[str]]]]:
+    """Lines from a PDF's text layer, with boxes scaled to the rendered page image."""
+    scale = PDF_RENDER_DPI / 72
+    lines: list[PageLine] = []
+    tables: list[list[list[str]]] = []
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        for index, page in enumerate(pdf.pages):
+            words = [
+                {
+                    "text": word["text"],
+                    "left": word["x0"] * scale,
+                    "top": word["top"] * scale,
+                    "right": word["x1"] * scale,
+                    "bottom": word["bottom"] * scale,
+                    "mid": (word["top"] + word["bottom"]) / 2 * scale,
+                    "h": (word["bottom"] - word["top"]) * scale,
+                }
+                for word in page.extract_words()
+            ]
+            lines.extend(_group_words(words, index))
+            for table in page.extract_tables():
+                tables.append([[(cell or "").strip() for cell in row] for row in table])
+    return lines, tables
+
+
+def _prepare_image(image: Image.Image) -> Image.Image:
+    """Upscale small scans so OCR (and the crops taken from them) stay legible."""
     if image.mode != "RGB":
         image = image.convert("RGB")
     if max(image.size) < 1600:
         scale = 1600 / max(image.size)
         image = image.resize((int(image.width * scale), int(image.height * scale)))
-
-    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-    words = [
-        {
-            "text": data["text"][i].strip(),
-            "x": data["left"][i],
-            "y": data["top"][i] + data["height"][i] / 2,
-            "h": data["height"][i],
-        }
-        for i in range(len(data["text"]))
-        if data["text"][i].strip() and int(data["conf"][i]) >= 0
-    ]
-    if not words:
-        return ""
-
-    heights = sorted(word["h"] for word in words)
-    tolerance = max(6.0, heights[len(heights) // 2] * 0.6)
-
-    rows: list[list[dict[str, Any]]] = []
-    for word in sorted(words, key=lambda w: w["y"]):
-        if rows and abs(word["y"] - rows[-1][0]["y"]) <= tolerance:
-            rows[-1].append(word)
-        else:
-            rows.append([word])
-    return "\n".join(
-        " ".join(w["text"] for w in sorted(row, key=lambda w: w["x"])) for row in rows
-    )
+    return image
 
 
-def _ocr_image(data: bytes) -> str:
-    return _ocr_lines(Image.open(io.BytesIO(data)))
+@dataclass
+class Document:
+    """A toll bill reduced to lines, the page images those lines sit on, and raw text."""
+
+    lines: list[PageLine]
+    pages: list[Image.Image]
+    text: str
+    tables: list[list[list[str]]]
 
 
-def _ocr_pdf(data: bytes) -> str:
-    with tempfile.TemporaryDirectory() as tmp:
-        pdf_path = Path(tmp) / "in.pdf"
-        pdf_path.write_bytes(data)
-        subprocess.run(
-            ["pdftoppm", "-r", "200", "-png", str(pdf_path), str(Path(tmp) / "page")],
-            check=True,
-            capture_output=True,
-        )
-        pages = sorted(Path(tmp).glob("page*.png"))
-        return "\n".join(_ocr_lines(Image.open(p)) for p in pages)
-
-
-def extract_text(filename: str, data: bytes) -> tuple[str, list[list[list[str]]]]:
-    """Return (text, tables) for a toll document."""
+def extract_document(filename: str, data: bytes) -> Document:
     suffix = Path(filename).suffix.lower()
     if suffix == ".pdf":
-        text_parts: list[str] = []
-        tables: list[list[list[str]]] = []
-        with pdfplumber.open(io.BytesIO(data)) as pdf:
-            for page in pdf.pages:
-                text_parts.append(page.extract_text() or "")
-                for table in page.extract_tables():
-                    tables.append([[(cell or "").strip() for cell in row] for row in table])
-        text = "\n".join(text_parts)
-        if len(text.strip()) < 40:
-            text = _ocr_pdf(data)
-        return text, tables
+        lines, tables = _pdf_text_lines(data)
+        pages = [_prepare_image(page) for page in _render_pdf_pages(data)]
+        if len("".join(line.text for line in lines).strip()) < 40:   # scanned bill
+            lines = [line for i, page in enumerate(pages) for line in _ocr_line_boxes(page, i)]
+        return Document(lines, pages, "\n".join(line.text for line in lines), tables)
     if suffix in {".txt", ".csv"}:
-        return data.decode("utf-8", errors="replace"), []
-    return _ocr_image(data), []
+        text = data.decode("utf-8", errors="replace")
+        return Document([PageLine(line, -1, None) for line in text.splitlines()], [], text, [])
+    page_image = _prepare_image(Image.open(io.BytesIO(data)))
+    lines = _ocr_line_boxes(page_image, 0)
+    return Document(lines, [page_image], "\n".join(line.text for line in lines), [])
 
 
 # --------------------------------------------------------------------------- tolls
@@ -204,7 +264,10 @@ def _parse_plate(text: str, known_plates: set[str]) -> str:
     return ""
 
 
-def _line_to_toll(line: str, row_id: int, source: str, known_plates: set[str]) -> Toll | None:
+def _line_to_toll(
+    page_line: PageLine, row_id: int, source: str, known_plates: set[str]
+) -> Toll | None:
+    line = page_line.text
     amounts = MONEY.findall(line)
     date = _parse_date(line)
     if not amounts or not date or EXCLUDED_LINE.search(line):
@@ -228,18 +291,21 @@ def _line_to_toll(line: str, row_id: int, source: str, known_plates: set[str]) -
         location=re.sub(r"\s{2,}", " ", location).strip(" -|\t")[:80],
         source=source,
         raw=line.strip(),
+        page=page_line.page,
+        box=list(page_line.box) if page_line.box else None,
     )
 
 
-def parse_tolls(filename: str, data: bytes, known_plates: set[str]) -> tuple[list[Toll], str]:
-    text, tables = extract_text(filename, data)
-    lines: list[str] = []
-    for table in tables:
+def parse_tolls(
+    filename: str, data: bytes, known_plates: set[str]
+) -> tuple[list[Toll], Document]:
+    document = extract_document(filename, data)
+    lines = [line for line in document.lines if line.text.strip()]
+    for table in document.tables:
         for row in table:
             joined = " ".join(cell for cell in row if cell)
             if joined.strip():
-                lines.append(joined)
-    lines.extend(line for line in text.splitlines() if line.strip())
+                lines.append(PageLine(joined, -1, None))
 
     tolls: list[Toll] = []
     seen: set[tuple[str, str, float, str]] = set()
@@ -253,7 +319,7 @@ def parse_tolls(filename: str, data: bytes, known_plates: set[str]) -> tuple[lis
         seen.add(key)
         toll.row_id = len(tolls)
         tolls.append(toll)
-    return tolls, text
+    return tolls, document
 
 
 # --------------------------------------------------------------------------- trips
