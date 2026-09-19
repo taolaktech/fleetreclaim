@@ -28,6 +28,9 @@ DATE_PATTERNS = [
 ]
 TIME = re.compile(r"\b(\d{1,2}:\d{2}(?::\d{2})?)\s*([AaPp]\.?[Mm]\.?)?\b")
 
+# Account activity that is not a toll: tag purchases and card auto-replenishments.
+EXCLUDED_LINE = re.compile(r"REBILL\s+TAG\s+STORE|AUTO\s?CHARGE|AUTO\s?REPLENISH", re.IGNORECASE)
+
 # Words that look like plates but are column headers / agency names.
 PLATE_STOPWORDS = {
     "TOTAL", "AMOUNT", "INVOICE", "ACCOUNT", "BALANCE", "STATEMENT", "LICENSE",
@@ -204,7 +207,7 @@ def _parse_plate(text: str, known_plates: set[str]) -> str:
 def _line_to_toll(line: str, row_id: int, source: str, known_plates: set[str]) -> Toll | None:
     amounts = MONEY.findall(line)
     date = _parse_date(line)
-    if not amounts or not date:
+    if not amounts or not date or EXCLUDED_LINE.search(line):
         return None
     amount = float(amounts[-1].replace(",", ""))
     if amount <= 0 or amount > 200:

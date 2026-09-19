@@ -41,11 +41,12 @@ def _fuzzy_plate(plate: str) -> str:
 
 
 def _plates_agree(toll_plate: str, trip_plate: str, mode: str) -> bool:
-    if mode == "ignore" or not toll_plate or not trip_plate:
+    """Modes: strict (equal), fuzzy (equal after OCR folding), no_conflict (either side unknown)."""
+    if not toll_plate or not trip_plate:
         return True
     if toll_plate == trip_plate:
         return True
-    return mode == "fuzzy" and _fuzzy_plate(toll_plate) == _fuzzy_plate(trip_plate)
+    return mode in {"fuzzy", "no_conflict"} and _fuzzy_plate(toll_plate) == _fuzzy_plate(trip_plate)
 
 
 def _candidates(
@@ -108,7 +109,7 @@ def match(
             (False, "strict", "plate + time"),
             (True, "strict", "plate + trip dates"),
             (True, "fuzzy", "similar plate + trip dates"),
-            (True, "ignore", "trip dates only"),
+            (True, "no_conflict", "trip dates only"),
         ):
             candidates = _candidates(
                 toll, trips, stamp, plate, buffer_hours,
@@ -125,13 +126,14 @@ def match(
 
         best_score = max(score for score, _ in candidates)
         best = [trip for score, trip in candidates if score == best_score]
-        # A plate that disagrees with the trip's is a guess worth eyeballing.
-        plate_conflict = bool(plate and _norm_plate(best[0].get("plate", "")) and basis == "trip dates only")
+        # Without agreeing plates on both sides the trip is a guess worth eyeballing.
+        best_plate = _norm_plate(best[0].get("plate", ""))
+        unverified_plate = not (plate and best_plate and _plates_agree(plate, best_plate, "fuzzy"))
         results.append(
             {
                 **toll,
                 "basis": basis,
-                "status": "matched" if len(best) == 1 and not plate_conflict else "ambiguous",
+                "status": "matched" if len(best) == 1 and not unverified_plate else "ambiguous",
                 "trip": best[0],
                 "alternatives": [t["trip_id"] for t in best[1:]],
                 "charge": charge,

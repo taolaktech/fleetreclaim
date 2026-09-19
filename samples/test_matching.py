@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.matching import match  # noqa: E402
+from app.parsers import _line_to_toll  # noqa: E402
 
 TRIP = {
     "trip_id": "58691937",
@@ -42,8 +43,14 @@ def main() -> int:
     assert result["rows"][0]["status"] == "matched", result["rows"][0]
     assert result["rows"][0]["basis"] == "similar plate + trip dates"
 
-    # A plate that matches no trip but a date that does: charged, flagged.
+    # A plate that contradicts the trip's plate is never charged to that trip.
     result = run([toll(plate="ZZZ9999", time="12:00")])
+    assert result["rows"][0]["status"] == "unmatched", result["rows"][0]
+    assert result["rows"][0]["charge"] == 0.0
+
+    # Trip plate unknown: the date alone carries the match, flagged for review.
+    plateless = {**TRIP, "plate": ""}
+    result = run([toll(plate="ZZZ9999", time="23:40")], trips=(plateless,))
     assert result["rows"][0]["status"] == "ambiguous", result["rows"][0]
     assert result["rows"][0]["charge"] == 2.5
 
@@ -57,6 +64,10 @@ def main() -> int:
     result = run([toll(plate="", time="12:00")], trips=(TRIP, other))
     assert result["rows"][0]["status"] == "ambiguous", result["rows"][0]
     assert result["rows"][0]["charge"] == 2.5
+
+    # Account-activity lines are dropped before matching ever sees them.
+    assert _line_to_toll("07/31/2026 10:29 CDT REBILL TAG STORE AutoCharge: MASTERCARD $80.00", 0, "f", set()) is None
+    assert _line_to_toll("07/30/2026 11:32 TJM5546 290-GILESMLWB $1.53", 0, "f", set()) is not None
 
     # Markup and fee apply to every charged toll.
     result = match([toll(time="12:00")], [TRIP], markup_pct=10, fee_per_toll=1)
