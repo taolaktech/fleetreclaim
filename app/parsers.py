@@ -17,7 +17,7 @@ from PIL import Image
 MONEY = re.compile(r"\$?\s?(\d{1,3}(?:,\d{3})*\.\d{2})")
 # Turo vehicle labels embed the plate, e.g. "Taofeek's Nissan (TX #VCG6008)".
 EMBEDDED_PLATE = re.compile(r"#\s*([A-Z0-9][A-Z0-9 -]{2,10})", re.IGNORECASE)
-PLATE = re.compile(r"\b(?=[A-Z0-9-]{5,9}\b)(?=.*\d)[A-Z0-9][A-Z0-9-]{3,8}\b")
+PLATE = re.compile(r"\b[A-Z0-9][A-Z0-9-]{4,8}\b")
 DATE_PATTERNS = [
     (re.compile(r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b"), ["%m/%d/%Y", "%m/%d/%y"]),
     (re.compile(r"\b(\d{4}-\d{2}-\d{2})\b"), ["%Y-%m-%d"]),
@@ -193,7 +193,7 @@ def _parse_plate(text: str, known_plates: set[str]) -> str:
             return plate
     for candidate in PLATE.findall(upper):
         cleaned = candidate.replace("-", "")
-        if cleaned in PLATE_STOPWORDS or cleaned.isdigit():
+        if cleaned in PLATE_STOPWORDS or cleaned.isdigit() or cleaned.isalpha():
             continue
         if _parse_date(candidate) or ":" in candidate:
             continue

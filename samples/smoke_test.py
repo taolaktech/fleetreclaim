@@ -51,10 +51,11 @@ def main() -> int:
             print("REVIEW", row["status"], row["date"], row["plate"], row["amount"])
     print(json.dumps(result["summary"], indent=2))
 
-    expected = {"R-1001": 16.35, "R-1002": 9.75, "R-1003": 4.50, "R-1004": 8.00}
+    expected = {"R-1001": 16.35, "R-1002": 15.75, "R-1003": 4.50, "R-1004": 13.00}
     actual = {t["trip_id"]: t["charge_total"] for t in result["trips"]}
     assert actual == expected, f"expected {expected}, got {actual}"
     assert result["summary"]["unmatched"] == 1, result["summary"]
+    assert result["summary"]["ambiguous"] == 1, result["summary"]
     print("OK")
     return 0
 

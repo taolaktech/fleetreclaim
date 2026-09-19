@@ -13,6 +13,8 @@ ROWS = [
     ("03/02/2026", "06:41 PM", "KJL4821", "SR-91 Express Lanes WB", "9.10"),
     ("03/05/2026", "11:02 AM", "8XYZ123", "Golden Gate Bridge SB", "9.75"),
     ("03/09/2026", "02:35 PM", "KJL4821", "I-110 ExpressLanes", "4.50"),
+    ("03/05/2026", "11:30 AM", "", "Richmond Bridge EB", "6.00"),
+    ("03/13/2026", "05:10 AM", "8XYZ123", "I-880 Express", "5.00"),
     ("03/14/2026", "07:58 AM", "8XYZ123", "Bay Bridge WB", "8.00"),
     ("03/21/2026", "09:20 AM", "PLT9900", "Orlando SR-417", "3.25"),
 ]
@@ -24,6 +26,7 @@ TRIPS = [
     ["R-1002", "Miguel Ortiz", "Taofeek's RAV4 (CA #8XYZ123)", "2026-03-04 09:00", "2026-03-06 18:00"],
     ["R-1003", "Priya Shah", "Taofeek's Tesla (TX #KJL4821)", "2026-03-08 12:00", "2026-03-10 10:00"],
     ["R-1004", "Chris Okafor", "Taofeek's RAV4 (CA #8XYZ123)", "2026-03-13 16:00", "2026-03-15 12:00"],
+    ["R-1005", "Sam Lee", "Taofeek's Kia (GA #PLT9900)", "2026-03-05 08:00", "2026-03-07 08:00"],
 ]
 
 
@@ -34,7 +37,7 @@ def write_trips() -> None:
 
 
 def render_bill() -> Image.Image:
-    image = Image.new("RGB", (1400, 900), "white")
+    image = Image.new("RGB", (1400, 1000), "white")
     draw = ImageDraw.Draw(image)
     font = ImageFont.load_default(size=22)
     bold = ImageFont.load_default(size=28)

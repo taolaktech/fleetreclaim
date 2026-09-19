@@ -86,6 +86,7 @@
 
   <section id="resultSection" class="hidden">
     <h2>5. What to charge</h2>
+    <p class="muted">Ambiguous tolls fit more than one trip; they are charged in full to the best-ranked trip — check them. Unmatched tolls fall outside every trip's dates and are charged to nobody.</p>
     <div class="cards" id="cards"></div>
     <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button></div>
     <div class="scroll"><table id="chargeTable"></table></div>
@@ -187,7 +188,8 @@ function renderResult(r) {
   $('cards').innerHTML = `
     <div class="card"><span class="muted">Tolls</span><b>${s.toll_count}</b></div>
     <div class="card"><span class="muted">Matched</span><b>${s.matched}</b></div>
-    <div class="card"><span class="muted">Needs review</span><b>${s.unmatched + s.ambiguous}</b></div>
+    <div class="card"><span class="muted">Ambiguous (charged, best guess)</span><b>${s.ambiguous}</b></div>
+    <div class="card"><span class="muted">Unmatched</span><b>${s.unmatched}</b></div>
     <div class="card"><span class="muted">Toll total</span><b>${money(s.toll_total)}</b></div>
     <div class="card"><span class="muted">Charge total</span><b>${money(s.charge_total)}</b></div>`;
 

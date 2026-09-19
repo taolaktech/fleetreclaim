@@ -9,11 +9,13 @@ how much to charge the guest.
    through Tesseract OCR. OCR word boxes are regrouped into visual rows so a toll's date,
    plate, and amount stay on one line even in multi-column statements.
 2. **Read the trips** — column names are auto-detected (trip start/end, license plate,
-   guest, vehicle, reservation id) from CSV or Excel.
+   guest, vehicle, reservation id) from CSV or Excel. When there is no plate column, the
+   plate is read out of the vehicle label, e.g. `Taofeek's Nissan (TX #VCG6008)`.
 3. **Match** — a toll belongs to a trip when the plates agree and the toll timestamp falls
-   inside the trip window (± a configurable buffer, default 2h). Tolls with no time match
-   on calendar-day overlap. Anything with several equally good candidates is flagged
-   `ambiguous`; anything with none is `unmatched`.
+   inside the trip window (± a configurable buffer, default 2h). If nothing matches on
+   time, the toll falls back to calendar-date overlap with the trip. Tolls that fit several
+   trips equally well are charged in full to the best-ranked one and flagged `ambiguous`;
+   only tolls outside every trip's dates stay `unmatched` and are charged to nobody.
 4. **Charge** — optional markup % and per-toll admin fee are applied; totals roll up per
    trip and export to CSV.
 

@@ -31,6 +31,40 @@ def _norm_plate(plate: str) -> str:
     return (plate or "").upper().replace(" ", "").replace("-", "")
 
 
+def _candidates(
+    toll: dict[str, Any],
+    trips: list[dict[str, Any]],
+    stamp: datetime | None,
+    plate: str,
+    buffer_hours: float,
+    date_only: bool = False,
+) -> list[tuple[int, dict[str, Any]]]:
+    if stamp is None:
+        return []
+    found: list[tuple[int, dict[str, Any]]] = []
+    for trip in trips:
+        window = _trip_window(trip, 0.0 if date_only else buffer_hours)
+        if window is None:
+            continue
+        trip_plate = _norm_plate(trip.get("plate", ""))
+        if plate and trip_plate and plate != trip_plate:
+            continue
+        start, end = window
+        if date_only or not toll.get("time"):
+            if not (start.date() <= stamp.date() <= end.date()):
+                continue
+        elif not (start <= stamp <= end):
+            continue
+        # Rank: plate-confirmed and time-confirmed beat date-only guesses.
+        score = 0
+        if plate and trip_plate and plate == trip_plate:
+            score += 2
+        if toll.get("time") and not date_only:
+            score += 1
+        found.append((score, trip))
+    return found
+
+
 def match(
     tolls: list[dict[str, Any]],
     trips: list[dict[str, Any]],
@@ -47,28 +81,11 @@ def match(
         stamp = _dt(toll.get("date", ""), toll.get("time", ""))
         plate = _norm_plate(toll.get("plate", ""))
 
-        candidates: list[tuple[int, dict[str, Any]]] = []
-        for trip in trips:
-            window = _trip_window(trip, buffer_hours)
-            if window is None or stamp is None:
-                continue
-            trip_plate = _norm_plate(trip.get("plate", ""))
-            if plate and trip_plate and plate != trip_plate:
-                continue
-            start, end = window
-            if not (start <= stamp <= end):
-                # Date-only tolls: accept if the calendar day overlaps the trip.
-                if toll.get("time"):
-                    continue
-                if not (start.date() <= stamp.date() <= end.date()):
-                    continue
-            # Rank: plate-confirmed and time-confirmed beat date-only guesses.
-            score = 0
-            if plate and trip_plate and plate == trip_plate:
-                score += 2
-            if toll.get("time"):
-                score += 1
-            candidates.append((score, trip))
+        candidates = _candidates(toll, trips, stamp, plate, buffer_hours)
+        if not candidates:
+            # Fall back to calendar-date overlap: a toll on a trip's date belongs
+            # to that trip even when the clock time sits outside the window.
+            candidates = _candidates(toll, trips, stamp, plate, buffer_hours, date_only=True)
 
         charge = round(amount * (1 + markup_pct / 100) + fee_per_toll, 2)
         if not candidates:
@@ -77,20 +94,19 @@ def match(
 
         best_score = max(score for score, _ in candidates)
         best = [trip for score, trip in candidates if score == best_score]
-        status = "matched" if len(best) == 1 else "ambiguous"
         results.append(
             {
                 **toll,
-                "status": status,
+                "status": "matched" if len(best) == 1 else "ambiguous",
                 "trip": best[0],
                 "alternatives": [t["trip_id"] for t in best[1:]],
-                "charge": charge if status == "matched" else 0.0,
+                "charge": charge,
             }
         )
 
     by_trip: dict[str, dict[str, Any]] = {}
     for row in results:
-        if row["status"] != "matched":
+        if row["status"] == "unmatched":
             continue
         trip = row["trip"]
         bucket = by_trip.setdefault(
