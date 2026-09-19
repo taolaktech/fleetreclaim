@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Toll ↔ Turo matcher</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#272b35; --text:#e7e9ee; --muted:#9aa3b2; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#4c8dff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:20px 28px; border-bottom:1px solid var(--line); }
+  h1 { margin:0; font-size:18px; }
+  header p { margin:6px 0 0; color:var(--muted); }
+  main { padding:24px 28px 60px; max-width:1200px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:18px; }
+  h2 { font-size:14px; margin:0 0 12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
+  input, button { font:inherit; }
+  input[type=file], input[type=number], input[type=text] { width:100%; background:#0d1017; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:9px 16px; cursor:pointer; }
+  button.secondary { background:#2a2f3a; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--panel); }
+  td input { padding:4px 6px; }
+  .scroll { max-height:420px; overflow:auto; }
+  .pill { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+  .matched { background:rgba(63,185,80,.15); color:var(--ok); }
+  .unmatched { background:rgba(248,81,73,.15); color:var(--bad); }
+  .ambiguous { background:rgba(210,153,34,.15); color:var(--warn); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .card { background:#0d1017; border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .card b { display:block; font-size:20px; margin-top:4px; }
+  .muted { color:var(--muted); }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  details summary { cursor:pointer; color:var(--muted); }
+  pre { white-space:pre-wrap; background:#0d1017; padding:10px; border-radius:6px; max-height:300px; overflow:auto; font-size:12px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Toll ↔ Turo matcher</h1>
+  <p>Upload a toll bill (PDF/image) and your Turo trip export. Tolls are matched to trips by plate and timestamp.</p>
+</header>
+<main>
+  <section>
+    <h2>1. Files</h2>
+    <div class="grid">
+      <div>
+        <label>Toll bill(s) — PDF, PNG, JPG, CSV</label>
+        <input id="tollFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.csv,.txt" />
+      </div>
+      <div>
+        <label>Turo trips — CSV or XLSX</label>
+        <input id="tripFile" type="file" accept=".csv,.xlsx,.xls" />
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button id="parseBtn">Parse files</button>
+      <span id="parseStatus" class="muted"></span>
+    </div>
+  </section>
+
+  <section id="settings" class="hidden">
+    <h2>2. Matching rules</h2>
+    <div class="grid">
+      <div><label>Buffer around trip (hours)</label><input id="buffer" type="number" step="0.5" value="2" /></div>
+      <div><label>Markup on each toll (%)</label><input id="markup" type="number" step="1" value="0" /></div>
+      <div><label>Admin fee per toll ($)</label><input id="fee" type="number" step="0.5" value="0" /></div>
+    </div>
+  </section>
+
+  <section id="tollSection" class="hidden">
+    <h2>3. Tolls read from the bill <span class="muted" id="tollCount"></span></h2>
+    <p class="muted">Edit anything the OCR got wrong — matching updates instantly.</p>
+    <div class="scroll"><table id="tollTable"></table></div>
+  </section>
+
+  <section id="tripSection" class="hidden">
+    <h2>4. Trips <span class="muted" id="tripCount"></span></h2>
+    <div class="scroll"><table id="tripTable"></table></div>
+  </section>
+
+  <section id="resultSection" class="hidden">
+    <h2>5. What to charge</h2>
+    <div class="cards" id="cards"></div>
+    <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button></div>
+    <div class="scroll"><table id="chargeTable"></table></div>
+    <h2 style="margin-top:22px">Per-toll detail</h2>
+    <div class="scroll"><table id="detailTable"></table></div>
+  </section>
+
+  <section id="rawSection" class="hidden">
+    <details><summary>Raw extracted text (debug)</summary><pre id="rawText"></pre></details>
+  </section>
+</main>
+
+<script>
+let tolls = [], trips = [], lastResult = null;
+const $ = id => document.getElementById(id);
+const money = n => '$' + Number(n || 0).toFixed(2);
+
+function settings() {
+  return {
+    buffer_hours: parseFloat($('buffer').value) || 0,
+    markup_pct: parseFloat($('markup').value) || 0,
+    fee_per_toll: parseFloat($('fee').value) || 0,
+  };
+}
+
+$('parseBtn').onclick = async () => {
+  const tollFiles = $('tollFiles').files, tripFile = $('tripFile').files[0];
+  if (!tollFiles.length || !tripFile) { $('parseStatus').textContent = 'Pick both a toll bill and a trip export.'; return; }
+  const form = new FormData();
+  [...tollFiles].forEach(f => form.append('toll_files', f));
+  form.append('trip_file', tripFile);
+  $('parseBtn').disabled = true;
+  $('parseStatus').textContent = 'Reading files (OCR can take a few seconds)…';
+  try {
+    const res = await fetch('/api/parse', { method: 'POST', body: form });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const data = await res.json();
+    tolls = data.tolls.map(t => ({ ...t, ignored: false }));
+    trips = data.trips;
+    $('parseStatus').textContent = `${tolls.length} toll line items, ${trips.length} trips.`;
+    $('rawText').textContent = Object.entries(data.raw_text).map(([k, v]) => `--- ${k} ---\n${v}`).join('\n\n');
+    ['settings','tollSection','tripSection','resultSection','rawSection'].forEach(id => $(id).classList.remove('hidden'));
+    renderTolls(); renderTrips(); runMatch();
+  } catch (e) {
+    $('parseStatus').textContent = 'Error: ' + e.message;
+  } finally { $('parseBtn').disabled = false; }
+};
+
+['buffer','markup','fee'].forEach(id => $(id).oninput = () => runMatch());
+
+function renderTolls() {
+  $('tollCount').textContent = `(${tolls.length})`;
+  const head = '<tr><th>Use</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th></tr>';
+  $('tollTable').innerHTML = head + tolls.map((t, i) => `
+    <tr>
+      <td><input type="checkbox" data-i="${i}" data-f="ignored" ${t.ignored ? '' : 'checked'} /></td>
+      <td><input type="text" data-i="${i}" data-f="date" value="${t.date}" size="10" /></td>
+      <td><input type="text" data-i="${i}" data-f="time" value="${t.time || ''}" size="5" /></td>
+      <td><input type="text" data-i="${i}" data-f="plate" value="${t.plate || ''}" size="8" /></td>
+      <td><input type="text" data-i="${i}" data-f="location" value="${(t.location || '').replace(/"/g, '&quot;')}" /></td>
+      <td><input type="number" step="0.01" data-i="${i}" data-f="amount" value="${t.amount}" size="6" /></td>
+    </tr>`).join('');
+  $('tollTable').oninput = e => {
+    const { i, f } = e.target.dataset;
+    if (i === undefined) return;
+    tolls[i][f] = f === 'ignored' ? !e.target.checked : (f === 'amount' ? parseFloat(e.target.value) || 0 : e.target.value);
+    runMatch();
+  };
+}
+
+function renderTrips() {
+  $('tripCount').textContent = `(${trips.length})`;
+  const head = '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th></tr>';
+  $('tripTable').innerHTML = head + trips.map((t, i) => `
+    <tr>
+      <td>${t.trip_id}</td><td>${t.guest}</td><td>${t.vehicle}</td>
+      <td><input type="text" data-i="${i}" data-f="plate" value="${t.plate || ''}" size="8" /></td>
+      <td>${t.start}</td><td>${t.end}</td>
+    </tr>`).join('');
+  $('tripTable').oninput = e => {
+    const { i, f } = e.target.dataset;
+    if (i === undefined) return;
+    trips[i][f] = e.target.value.toUpperCase();
+    runMatch();
+  };
+}
+
+async function runMatch() {
+  const res = await fetch('/api/match', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tolls, trips, ...settings() }),
+  });
+  lastResult = await res.json();
+  renderResult(lastResult);
+}
+
+function renderResult(r) {
+  const s = r.summary;
+  $('cards').innerHTML = `
+    <div class="card"><span class="muted">Tolls</span><b>${s.toll_count}</b></div>
+    <div class="card"><span class="muted">Matched</span><b>${s.matched}</b></div>
+    <div class="card"><span class="muted">Needs review</span><b>${s.unmatched + s.ambiguous}</b></div>
+    <div class="card"><span class="muted">Toll total</span><b>${money(s.toll_total)}</b></div>
+    <div class="card"><span class="muted">Charge total</span><b>${money(s.charge_total)}</b></div>`;
+
+  $('chargeTable').innerHTML =
+    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Tolls</th><th>Toll total</th><th>Charge guest</th></tr>' +
+    (r.trips.length ? r.trips.map(t => `
+      <tr><td>${t.trip_id}</td><td>${t.guest}</td><td>${t.vehicle}</td><td>${t.plate}</td>
+      <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
+      <td>${t.toll_count}</td><td>${money(t.toll_total)}</td><td><b>${money(t.charge_total)}</b></td></tr>`).join('')
+      : '<tr><td colspan="8" class="muted">No matches yet.</td></tr>');
+
+  $('detailTable').innerHTML =
+    '<tr><th>Status</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Trip</th><th>Guest</th><th>Charge</th></tr>' +
+    r.rows.map(row => `
+      <tr><td><span class="pill ${row.status}">${row.status}</span></td>
+      <td>${row.date}</td><td>${row.time || ''}</td><td>${row.plate || ''}</td>
+      <td>${row.location || ''}</td><td>${money(row.amount)}</td>
+      <td>${row.trip ? row.trip.trip_id : '—'}${row.alternatives && row.alternatives.length ? ' <span class="muted">+' + row.alternatives.length + ' other</span>' : ''}</td>
+      <td>${row.trip ? row.trip.guest : ''}</td><td>${money(row.charge)}</td></tr>`).join('');
+}
+
+$('exportBtn').onclick = async () => {
+  const res = await fetch('/api/export', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tolls, trips, ...settings() }),
+  });
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'toll-charges.csv'; a.click();
+  URL.revokeObjectURL(url);
+};
+</script>
+</body>
+</html>
