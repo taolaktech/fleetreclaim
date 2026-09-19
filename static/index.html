@@ -103,6 +103,19 @@
     <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button> <span class="muted" id="filterNote"></span></div>
     <div class="scroll"><table id="chargeTable"></table></div>
     <h2 style="margin-top:22px">Per-toll detail</h2>
+    <div class="grid" style="margin-bottom:12px">
+      <div><label>Plate</label><select id="dPlate"></select></div>
+      <div>
+        <label>Status</label>
+        <select id="dStatus">
+          <option value="">All</option>
+          <option value="matched">matched</option>
+          <option value="ambiguous">ambiguous</option>
+          <option value="unmatched">unmatched</option>
+        </select>
+      </div>
+      <div style="align-self:end"><span class="muted" id="detailNote"></span></div>
+    </div>
     <div class="scroll"><table id="detailTable"></table></div>
   </section>
 
@@ -203,7 +216,9 @@ function populateFilters() {
     el.value = values.includes(current) ? current : '';
   };
   fill($('fVehicle'), [...new Set(trips.map(t => t.vehicle).filter(Boolean))].sort());
-  fill($('fPlate'), [...new Set([...trips.map(t => t.plate), ...tolls.map(t => t.plate)].filter(Boolean))].sort());
+  const plates = [...new Set([...trips.map(t => t.plate), ...tolls.map(t => t.plate)].filter(Boolean))].sort();
+  fill($('fPlate'), plates);
+  fill($('dPlate'), plates);
 }
 
 /** Re-derive rows, trip totals and summary for the current filter selection. */
@@ -253,9 +268,9 @@ function filtered() {
 }
 
 ['fFrom','fTo','fTrip'].forEach(id => $(id).oninput = () => renderResult(filtered()));
-['fVehicle','fPlate'].forEach(id => $(id).onchange = () => renderResult(filtered()));
+['fVehicle','fPlate','dPlate','dStatus'].forEach(id => $(id).onchange = () => renderResult(filtered()));
 $('clearFilters').onclick = () => {
-  ['fFrom','fTo','fTrip','fVehicle','fPlate'].forEach(id => $(id).value = '');
+  ['fFrom','fTo','fTrip','fVehicle','fPlate','dPlate','dStatus'].forEach(id => $(id).value = '');
   renderResult(filtered());
 };
 
@@ -299,9 +314,15 @@ function renderResult(r) {
     renderResult(filtered());
   };
 
+  // The detail table has its own plate/status filters on top of the section filters.
+  const dPlate = $('dPlate').value, dStatus = $('dStatus').value;
+  const detailRows = r.rows.filter(row =>
+    (!dPlate || (row.plate || '') === dPlate) && (!dStatus || row.status === dStatus));
+  $('detailNote').textContent = (dPlate || dStatus) ? `showing ${detailRows.length} of ${r.rows.length}` : '';
+
   $('detailTable').innerHTML =
     '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Trip</th><th>Guest</th><th>Charge</th></tr>' +
-    r.rows.map(row => `
+    detailRows.map(row => `
       <tr><td><span class="pill ${row.status}">${row.status}</span></td>
       <td class="muted">${row.basis || '—'}</td>
       <td>${row.date}</td><td>${row.time || ''}</td><td>${row.plate || ''}</td>

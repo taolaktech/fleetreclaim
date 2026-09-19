@@ -53,6 +53,21 @@ def main() -> int:
         assert rows() > 0 and set(shown) == {rav4}, shown
 
         page.click("#clearFilters")
+        page.select_option("#dStatus", "unmatched")
+        page.wait_for_timeout(300)
+        statuses = page.locator("#detailTable tr td:nth-child(1)").all_inner_texts()
+        print("detail status filter:", statuses, "|", page.locator("#detailNote").inner_text())
+        assert statuses and set(statuses) == {"unmatched"}, statuses
+        page.select_option("#dStatus", "")
+        page.select_option("#dPlate", "KJL4821")
+        page.wait_for_timeout(300)
+        plates = page.locator("#detailTable tr td:nth-child(5)").all_inner_texts()
+        print("detail plate filter:", plates)
+        assert plates and set(plates) == {"KJL4821"}, plates
+        trip_rows = page.locator("#chargeTable tr").count() - 1
+        assert trip_rows == 4, trip_rows  # detail filters must not touch the charge table
+
+        page.click("#clearFilters")
         page.click("#chargeTable .toll-link >> nth=0")
         page.wait_for_selector("#chargeTable .subrow", timeout=5_000)
         sub = page.locator("#chargeTable .subrow table tr").count() - 1
