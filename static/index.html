@@ -88,7 +88,7 @@
       <div><label>Trip #</label><input id="fTrip" type="text" placeholder="e.g. 58691937" /></div>
       <div style="align-self:end">
         <label class="row" style="gap:6px; margin:0">
-          <input id="fSettled" type="checkbox" style="width:auto" />
+          <input id="fSettled" type="checkbox" style="width:auto" checked />
           Hide trips Turo already settled
         </label>
       </div>
@@ -384,7 +384,7 @@ function filtered() {
 ['fVehicle','fPlate','fSettled','dPlate','dStatus'].forEach(id => $(id).onchange = () => renderResult(filtered()));
 $('clearFilters').onclick = () => {
   ['fFrom','fTo','fTrip','fVehicle','fPlate','dPlate','dStatus'].forEach(id => $(id).value = '');
-  $('fSettled').checked = false;
+  $('fSettled').checked = true;
   renderResult(filtered());
 };
 

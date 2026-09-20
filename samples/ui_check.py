@@ -29,6 +29,12 @@ def main() -> int:
         print("R-1001 row:", cells)
         assert cells[6] == "$16.35" and cells[7] == "$10.00" and cells[8] == "$6.35", cells
 
+        # trips Turo already settled are hidden until the default toggle is cleared
+        assert page.is_checked("#fSettled")
+        assert page.locator("#chargeTable tr", has_text="R-1005").count() == 0
+        page.uncheck("#fSettled")
+        page.wait_for_timeout(300)
+
         # R-1005 matched no toll but Turo collected $4 on it: still listed, $0 owed.
         paid = page.locator("#chargeTable tr", has_text="R-1005").first.locator("td").all_inner_texts()
         print("R-1005 row:", paid)
@@ -36,15 +42,6 @@ def main() -> int:
         no_rows = page.locator("#chargeTable tr", has_text="R-1005").first
         assert no_rows.locator("[data-png]").count() == 0  # nothing to show as evidence
         assert no_rows.locator("[data-resolve]").count() == 0  # and nothing to resolve
-
-        page.check("#fSettled")
-        page.wait_for_timeout(300)
-        settled_gone = page.locator("#chargeTable tr", has_text="R-1005").count()
-        print("hide-settled toggle, R-1005 rows:", settled_gone)
-        assert settled_gone == 0
-        page.uncheck("#fSettled")
-        page.wait_for_timeout(300)
-        assert page.locator("#chargeTable tr", has_text="R-1005").count() == 1
 
         # resolving a row is view-only: it leaves the table, totals stay put
         before_total = page.locator("#cards .card").nth(5).inner_text()
@@ -102,7 +99,7 @@ def main() -> int:
         print("detail plate filter:", plates)
         assert plates and set(plates) == {"KJL4821"}, plates
         trip_rows = page.locator("#chargeTable tr").count() - 1
-        assert trip_rows == 5, trip_rows  # detail filters must not touch the charge table
+        assert trip_rows == 4, trip_rows  # detail filters must not touch the charge table
 
         page.click("#clearFilters")
         count_link = page.locator("#chargeTable [data-trip]").first
