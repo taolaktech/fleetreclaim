@@ -21,7 +21,7 @@ def main() -> int:
 
         rows = lambda: page.locator("#detailTable tr").count() - 1
         all_rows = rows()
-        print("rows unfiltered:", all_rows, "| charge total:", page.locator("#cards .card").nth(5).inner_text().replace("\n", " "))
+        print("rows unfiltered:", all_rows, "| charge total:", page.locator("#cards .card").nth(4).inner_text().replace("\n", " "))
 
         # R-1001 has $10 already billed by Turo, so only the shortfall is charged.
         r1001 = page.locator("#chargeTable tr", has_text="R-1001").first
@@ -44,12 +44,12 @@ def main() -> int:
         assert no_rows.locator("[data-resolve]").count() == 0  # and nothing to resolve
 
         # resolving a row is view-only: it leaves the table, totals stay put
-        before_total = page.locator("#cards .card").nth(5).inner_text()
+        before_total = page.locator("#cards .card").nth(4).inner_text()
         page.locator("#chargeTable tr", has_text="R-1003").first.locator("[data-resolve]").click()
         page.wait_for_timeout(300)
         print("after resolving R-1003:", page.locator("#resolvedNote").inner_text())
         assert page.locator("#chargeTable tr", has_text="R-1003").count() == 0
-        assert page.locator("#cards .card").nth(5).inner_text() == before_total
+        assert page.locator("#cards .card").nth(4).inner_text() == before_total
         page.click("#showAll")
         page.wait_for_timeout(300)
         assert page.locator("#chargeTable tr", has_text="R-1003").count() == 1

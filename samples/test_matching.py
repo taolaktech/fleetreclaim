@@ -48,10 +48,10 @@ def main() -> int:
     assert result["rows"][0]["status"] == "unmatched", result["rows"][0]
     assert result["rows"][0]["charge"] == 0.0
 
-    # Trip plate unknown: the date alone carries the match, flagged for review.
+    # Trip plate unknown: the date alone carries the match.
     plateless = {**TRIP, "plate": ""}
     result = run([toll(plate="ZZZ9999", time="23:40")], trips=(plateless,))
-    assert result["rows"][0]["status"] == "ambiguous", result["rows"][0]
+    assert result["rows"][0]["status"] == "matched", result["rows"][0]
     assert result["rows"][0]["charge"] == 2.5
 
     # Outside every trip date: nobody is charged.
@@ -59,10 +59,10 @@ def main() -> int:
     assert result["rows"][0]["status"] == "unmatched", result["rows"][0]
     assert result["rows"][0]["charge"] == 0.0
 
-    # Two overlapping trips, unreadable plate -> ambiguous but still charged.
+    # Two overlapping trips, unreadable plate -> charged to the best-ranked one.
     other = {**TRIP, "trip_id": "X-2", "plate": "ABC1234", "guest": "Ada"}
     result = run([toll(plate="", time="12:00")], trips=(TRIP, other))
-    assert result["rows"][0]["status"] == "ambiguous", result["rows"][0]
+    assert result["rows"][0]["status"] == "matched", result["rows"][0]
     assert result["rows"][0]["charge"] == 2.5
 
     # Account-activity lines are dropped before matching ever sees them.

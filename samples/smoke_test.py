@@ -57,7 +57,6 @@ def main() -> int:
     actual = {t["trip_id"]: t["charge_total"] for t in result["trips"]}
     assert actual == expected, f"expected {expected}, got {actual}"
     assert result["summary"]["unmatched"] == 1, result["summary"]
-    assert result["summary"]["ambiguous"] == 1, result["summary"]
     print("OK")
     return 0
 

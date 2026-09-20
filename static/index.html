@@ -29,7 +29,6 @@
   .pill { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
   .matched { background:rgba(63,185,80,.15); color:var(--ok); }
   .unmatched { background:rgba(248,81,73,.15); color:var(--bad); }
-  .ambiguous { background:rgba(210,153,34,.15); color:var(--warn); }
   .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
   .card { background:#0d1017; border:1px solid var(--line); border-radius:8px; padding:12px; }
   .card b { display:block; font-size:20px; margin-top:4px; }
@@ -79,7 +78,7 @@
 
   <section id="resultSection" class="hidden">
     <h2>2. What to charge</h2>
-    <p class="muted">Ambiguous charges fit more than one trip; they are charged in full to the best-ranked trip — check them. Unmatched charges fall outside every trip's dates and are charged to nobody.</p>
+    <p class="muted">Charges that fit more than one trip go in full to the best-ranked trip. Unmatched charges fall outside every trip's dates and are charged to nobody.</p>
     <div class="grid" style="margin-bottom:16px">
       <div><label>From date</label><input id="fFrom" type="date" /></div>
       <div><label>To date</label><input id="fTo" type="date" /></div>
@@ -105,7 +104,6 @@
         <select id="dStatus">
           <option value="">All</option>
           <option value="matched">matched</option>
-          <option value="ambiguous">ambiguous</option>
           <option value="unmatched">unmatched</option>
         </select>
       </div>
@@ -310,7 +308,7 @@ function populateFilters() {
 
 /** Re-derive rows, trip totals and summary for the current filter selection. */
 function filtered() {
-  if (!lastResult) return { rows: [], trips: [], summary: { toll_count: 0, matched: 0, ambiguous: 0, unmatched: 0, toll_total: 0, charge_total: 0, unmatched_total: 0 } };
+  if (!lastResult) return { rows: [], trips: [], summary: { toll_count: 0, matched: 0, unmatched: 0, toll_total: 0, charge_total: 0, unmatched_total: 0 } };
   const from = $('fFrom').value, to = $('fTo').value;
   const vehicle = $('fVehicle').value, plate = $('fPlate').value;
   const tripQuery = $('fTrip').value.trim().toLowerCase();
@@ -371,7 +369,6 @@ function filtered() {
     summary: {
       toll_count: rows.length,
       matched: rows.filter(r => r.status === 'matched').length,
-      ambiguous: rows.filter(r => r.status === 'ambiguous').length,
       unmatched: unmatched.length,
       toll_total: sum(rows, 'amount'),
       charge_total: sum([...byTrip.values()], 'charge_total'),
@@ -494,7 +491,6 @@ function renderResult(r) {
   $('cards').innerHTML = `
     <div class="card"><span class="muted">Line items</span><b>${s.toll_count}</b></div>
     <div class="card"><span class="muted">Matched</span><b>${s.matched}</b></div>
-    <div class="card"><span class="muted">Ambiguous (charged, best guess)</span><b>${s.ambiguous}</b></div>
     <div class="card"><span class="muted">Unmatched</span><b>${s.unmatched}</b></div>
     <div class="card"><span class="muted">Tolls/tickets total</span><b>${money(s.toll_total)}</b></div>
     <div class="card"><span class="muted">Charge total</span><b>${money(s.charge_total)}</b></div>`;

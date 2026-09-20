@@ -126,14 +126,11 @@ def match(
 
         best_score = max(score for score, _ in candidates)
         best = [trip for score, trip in candidates if score == best_score]
-        # Without agreeing plates on both sides the trip is a guess worth eyeballing.
-        best_plate = _norm_plate(best[0].get("plate", ""))
-        unverified_plate = not (plate and best_plate and _plates_agree(plate, best_plate, "fuzzy"))
         results.append(
             {
                 **toll,
                 "basis": basis,
-                "status": "matched" if len(best) == 1 and not unverified_plate else "ambiguous",
+                "status": "matched",
                 "trip": best[0],
                 "alternatives": [t["trip_id"] for t in best[1:]],
                 "charge": charge,
@@ -203,15 +200,13 @@ def match(
         )
 
     unmatched = [r for r in results if r["status"] == "unmatched"]
-    ambiguous = [r for r in results if r["status"] == "ambiguous"]
     return {
         "rows": results,
         "trips": sorted(by_trip.values(), key=lambda t: t["start"]),
         "summary": {
             "toll_count": len(results),
-            "matched": len(results) - len(unmatched) - len(ambiguous),
+            "matched": len(results) - len(unmatched),
             "unmatched": len(unmatched),
-            "ambiguous": len(ambiguous),
             "toll_total": round(sum(float(r["amount"]) for r in results), 2),
             "charge_total": round(sum(t["charge_total"] for t in by_trip.values()), 2),
             "unmatched_total": round(sum(float(r["amount"]) for r in unmatched), 2),

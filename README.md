@@ -14,7 +14,7 @@ per trip, how much to charge the guest.
 3. **Match** — a toll belongs to a trip when the plates agree and the toll timestamp falls
    inside the trip window (± a configurable buffer, default 2h). If nothing matches on
    time, the toll falls back to calendar-date overlap with the trip. Tolls that fit several
-   trips equally well are charged in full to the best-ranked one and flagged `ambiguous`;
+   trips equally well are charged in full to the best-ranked one;
    tolls outside every trip's dates, or whose plate contradicts every candidate trip's
    plate, stay `unmatched` and are charged to nobody. Statement lines that are not tolls
    (tag-store rebills, card auto-charges, support-services system fees) are dropped while parsing.
