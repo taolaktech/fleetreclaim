@@ -130,7 +130,7 @@
       <div class="row" style="justify-content:space-between; align-items:flex-start">
         <div id="modalHead"></div>
         <div class="row">
-          <button id="modalPng" class="secondary">View bill rows</button>
+          <button id="modalPng" class="secondary">View evidence</button>
           <button id="modalCsv" class="secondary">Download CSV</button>
           <button id="modalClose" class="secondary">Close</button>
         </div>
@@ -430,9 +430,9 @@ async function openPngModal(trip, rows) {
   if (!blob) return;
   if (pngUrl) URL.revokeObjectURL(pngUrl);
   pngUrl = URL.createObjectURL(blob);
-  $('pngHead').innerHTML = `<h3>Bill rows — trip ${trip.trip_id}</h3>` +
+  $('pngHead').innerHTML = `<h3>Evidence — trip ${trip.trip_id}</h3>` +
     `<div class="muted">${trip.guest} · ${money(trip.toll_total)} in tolls/tickets</div>`;
-  $('pngBody').innerHTML = `<img src="${pngUrl}" alt="bill rows for trip ${trip.trip_id}" />`;
+  $('pngBody').innerHTML = `<img src="${pngUrl}" alt="evidence for trip ${trip.trip_id}" />`;
   $('pngDownload').onclick = () => downloadBlob(`tolls-${trip.trip_id}.png`, blob);
   $('pngModal').classList.remove('hidden');
 }
