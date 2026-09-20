@@ -35,6 +35,7 @@ def main() -> int:
         assert paid[6] == "0" and paid[8] == "$4.00" and paid[9] == "$0.00", paid
         no_rows = page.locator("#chargeTable tr", has_text="R-1005").first
         assert no_rows.locator("[data-png]").count() == 0  # nothing to show as evidence
+        assert no_rows.locator("[data-resolve]").count() == 0  # and nothing to resolve
 
         page.check("#fSettled")
         page.wait_for_timeout(300)
