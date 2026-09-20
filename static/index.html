@@ -85,6 +85,12 @@
       <div><label>Vehicle</label><select id="fVehicle"></select></div>
       <div><label>Plate</label><select id="fPlate"></select></div>
       <div><label>Trip #</label><input id="fTrip" type="text" placeholder="e.g. 58691937" /></div>
+      <div style="align-self:end">
+        <label class="row" style="gap:6px; margin:0">
+          <input id="fSettled" type="checkbox" style="width:auto" />
+          Hide trips Turo already settled
+        </label>
+      </div>
       <div style="align-self:end"><button id="clearFilters" class="secondary">Clear filters</button></div>
     </div>
     <div class="cards" id="cards"></div>
@@ -257,6 +263,7 @@ function filtered() {
   const from = $('fFrom').value, to = $('fTo').value;
   const vehicle = $('fVehicle').value, plate = $('fPlate').value;
   const tripQuery = $('fTrip').value.trim().toLowerCase();
+  const hideSettled = $('fSettled').checked;
   const active = from || to || vehicle || plate || tripQuery;
 
   const rows = lastResult.rows.filter(row => {
@@ -297,6 +304,13 @@ function filtered() {
     byTrip.set(t.trip_id, { ...t, toll_count: 0, toll_total: 0, gross_charge: 0, charge_total: 0, already_charged: already });
   }
 
+  // Trips where Turo's charge already covers the bill leave nothing to collect.
+  if (hideSettled) {
+    for (const [id, t] of byTrip) {
+      if (t.already_charged > 0 && t.charge_total === 0) byTrip.delete(id);
+    }
+  }
+
   const sum = (list, key) => +list.reduce((acc, r) => acc + Number(r[key] || 0), 0).toFixed(2);
   const unmatched = rows.filter(r => r.status === 'unmatched');
   $('filterNote').textContent = active ? `filtered: ${rows.length} of ${lastResult.rows.length} line items` : '';
@@ -316,9 +330,10 @@ function filtered() {
 }
 
 ['fFrom','fTo','fTrip'].forEach(id => $(id).oninput = () => renderResult(filtered()));
-['fVehicle','fPlate','dPlate','dStatus'].forEach(id => $(id).onchange = () => renderResult(filtered()));
+['fVehicle','fPlate','fSettled','dPlate','dStatus'].forEach(id => $(id).onchange = () => renderResult(filtered()));
 $('clearFilters').onclick = () => {
   ['fFrom','fTo','fTrip','fVehicle','fPlate','dPlate','dStatus'].forEach(id => $(id).value = '');
+  $('fSettled').checked = false;
   renderResult(filtered());
 };
 

@@ -34,6 +34,15 @@ def main() -> int:
         print("R-1005 row:", paid)
         assert paid[5] == "0" and paid[7] == "$4.00" and paid[8] == "$0.00", paid
 
+        page.check("#fSettled")
+        page.wait_for_timeout(300)
+        settled_gone = page.locator("#chargeTable tr", has_text="R-1005").count()
+        print("hide-settled toggle, R-1005 rows:", settled_gone)
+        assert settled_gone == 0
+        page.uncheck("#fSettled")
+        page.wait_for_timeout(300)
+        assert page.locator("#chargeTable tr", has_text="R-1005").count() == 1
+
         page.select_option("#fPlate", "KJL4821")
         page.wait_for_timeout(300)
         print("plate filter rows:", rows(), "|", page.locator("#filterNote").inner_text())
