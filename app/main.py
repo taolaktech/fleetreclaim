@@ -106,7 +106,11 @@ def _base_url(request: Request) -> str:
 @app.get("/api/billing/status")
 def billing_status(user: AuthUser = Depends(require_firebase_user)) -> dict[str, Any]:
     """Stripe is the source of truth, so this survives logout and new devices."""
-    return {"billingEnabled": billing.configured(), **billing.entitlement(user)}
+    return {
+        "billingEnabled": billing.configured(),
+        "gatedFeatures": sorted(billing.gated_features()),
+        **billing.entitlement(user),
+    }
 
 
 @app.post("/api/billing/checkout")

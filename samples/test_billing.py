@@ -380,6 +380,12 @@ def test_owners_are_refused_stripe_billing_actions() -> None:
     assert client.get("/api/billing/status").json()["isOwner"] is True
 
 
+def test_status_tells_the_browser_which_features_are_gated() -> None:
+    setup(**STRIPE_ENV, DEV_AUTH_BYPASS="1", PAID_FEATURES=" parse , evidence ")
+    body = TestClient(app).get("/api/billing/status").json()
+    assert body["gatedFeatures"] == ["evidence", "parse"] and body["hasAccess"] is False
+
+
 def test_gated_features_follow_the_entitlement_function() -> None:
     fake = setup(**STRIPE_ENV, DEV_AUTH_BYPASS="1", PAID_FEATURES="evidence")
     client = TestClient(app)

@@ -277,6 +277,10 @@
             <textarea id="excludeList" rows="3" placeholder="SUPPORT SERVICES, SYSTEM&#10;REBILL TAG STORE"></textarea>
             <p class="muted" style="margin:6px 0 0">Transactions containing these words are excluded from charge calculations (one phrase per line, case-insensitive). Tag-store rebills, card auto-charges and "SUPPORT SERVICES, SYSTEM" are always excluded.</p>
           </div>
+          <p id="paywallNote" class="hidden" style="margin:12px 0 0;color:var(--color-danger)">
+            Processing documents needs an active subscription.
+            <a href="#" data-view="billing">Choose a plan</a>.
+          </p>
           <div class="row" style="margin-top:12px">
             <button id="parseBtn" class="btn">Process documents</button>
             <span id="parseStatus" class="muted" role="status" aria-live="polite"></span>
@@ -473,6 +477,19 @@ const STATUS_TEXT = {
   active: 'Active', trialing: 'Free trial', past_due: 'Payment failed', unpaid: 'Unpaid',
   incomplete: 'Awaiting payment', incomplete_expired: 'Checkout expired', canceled: 'Canceled',
   paused: 'Paused', none: 'No subscription',
+};
+
+const paywallNote = document.getElementById('paywallNote');
+
+onBilling(b => {
+  const gated = b.billingEnabled && b.gatedFeatures.includes('parse');
+  const blocked = gated && !b.hasAccess && !b.loading && !b.error;
+  paywallNote.classList.toggle('hidden', !blocked);
+  document.getElementById('parseBtn').disabled = blocked;
+});
+
+paywallNote.onclick = e => {
+  if (e.target.dataset.view) { e.preventDefault(); window.showView('billing'); }
 };
 
 onBilling(b => {
