@@ -606,7 +606,7 @@ $('parseBtn').onclick = async () => {
   form.append('exclude', exclude);
   localStorage.setItem('tollExclusions', exclude);
   $('parseBtn').disabled = true;
-  processing('Reading documents and extracting transactions (OCR can take a few seconds)…');
+  processing('Reading documents and extracting transactions…');
   try {
     const res = await window.authFetch('/api/parse', { method: 'POST', body: form });
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
