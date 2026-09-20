@@ -13,7 +13,6 @@ def main() -> int:
         browser = p.chromium.connect_over_cdp("http://localhost:29229")
         page = browser.contexts[0].new_page()
         page.goto("http://localhost:8080", wait_until="load")
-        page.fill("#excludeList", "")  # a previous run may have saved exclusions
         page.set_input_files("#tollFiles", str(HERE / "toll_bill.pdf"))
         page.set_input_files("#tripFile", str(HERE / "turo_trips.csv"))
         page.click("#parseBtn")
