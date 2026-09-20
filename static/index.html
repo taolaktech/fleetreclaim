@@ -94,7 +94,7 @@
       <div style="align-self:end"><button id="clearFilters" class="secondary">Clear filters</button></div>
     </div>
     <div class="cards" id="cards"></div>
-    <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button> <span class="muted" id="filterNote"></span> <span class="muted" id="hiddenNote"></span></div>
+    <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button> <span class="muted" id="filterNote"></span> <span class="muted" id="resolvedNote"></span></div>
     <div class="scroll"><table id="chargeTable"></table></div>
     <h2 style="margin-top:22px">Line-item detail</h2>
     <div class="grid" style="margin-bottom:12px">
@@ -159,7 +159,7 @@
 
 <script>
 let tolls = [], trips = [], lastResult = null, parseId = '';
-const hiddenTrips = new Set();   // rows the user ticked off; view-only
+const resolvedTrips = new Set();   // rows the user ticked off; view-only
 const $ = id => document.getElementById(id);
 const money = n => '$' + Number(n || 0).toFixed(2);
 
@@ -186,7 +186,7 @@ $('parseBtn').onclick = async () => {
     parseId = data.parse_id;
     tolls = data.tolls.map(t => ({ ...t, ignored: false }));
     trips = data.trips;
-    hiddenTrips.clear();
+    resolvedTrips.clear();
     $('parseStatus').textContent = `${tolls.length} bill line items, ${trips.length} trips.`;
     $('rawText').textContent = Object.entries(data.raw_text).map(([k, v]) => `--- ${k} ---\n${v}`).join('\n\n');
     ['tollSection','tripSection','resultSection','rawSection'].forEach(id => $(id).classList.remove('hidden'));
@@ -450,18 +450,18 @@ function renderResult(r) {
     <div class="card"><span class="muted">Tolls/tickets total</span><b>${money(s.toll_total)}</b></div>
     <div class="card"><span class="muted">Charge total</span><b>${money(s.charge_total)}</b></div>`;
 
-  // Hiding a row only tidies the view; totals and the CSV keep every trip.
-  const shown = r.trips.filter(t => !hiddenTrips.has(String(t.trip_id)));
-  const hiddenHere = r.trips.length - shown.length;
-  $('hiddenNote').innerHTML = hiddenHere
-    ? `${hiddenHere} row${hiddenHere === 1 ? '' : 's'} hidden · <button type="button" class="toll-link" id="showAll">show all</button>`
+  // Resolving a row only tidies the view; totals and the CSV keep every trip.
+  const shown = r.trips.filter(t => !resolvedTrips.has(String(t.trip_id)));
+  const resolvedHere = r.trips.length - shown.length;
+  $('resolvedNote').innerHTML = resolvedHere
+    ? `${resolvedHere} resolved · <button type="button" class="toll-link" id="showAll">show all</button>`
     : '';
-  if (hiddenHere) $('showAll').onclick = () => { hiddenTrips.clear(); renderResult(filtered()); };
+  if (resolvedHere) $('showAll').onclick = () => { resolvedTrips.clear(); renderResult(filtered()); };
 
   $('chargeTable').innerHTML =
-    '<tr><th>Hide</th><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Items</th><th>Tolls/tickets total</th><th>Turo charged</th><th>Charge guest</th></tr>' +
+    '<tr><th>Resolve</th><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Items</th><th>Tolls/tickets total</th><th>Turo charged</th><th>Charge guest</th></tr>' +
     (shown.length ? shown.map(t => `
-      <tr><td><button type="button" class="toll-link" data-hide="${t.trip_id}" title="Hide this row">✕</button></td>
+      <tr><td><button type="button" class="toll-link" data-resolve="${t.trip_id}" title="Mark this trip resolved and take it off the list">resolve</button></td>
       <td>${t.trip_id}</td>
       <td>${t.guest} <button type="button" class="toll-link" data-png="${t.trip_id}">bill</button></td>
       <td>${t.vehicle}</td><td>${t.plate}</td>
@@ -472,8 +472,8 @@ function renderResult(r) {
       : '<tr><td colspan="10" class="muted">No matches yet.</td></tr>');
 
   $('chargeTable').onclick = e => {
-    const { trip: openId, png: pngId, hide: hideId } = e.target.dataset;
-    if (hideId) { hiddenTrips.add(String(hideId)); renderResult(filtered()); return; }
+    const { trip: openId, png: pngId, resolve: doneId } = e.target.dataset;
+    if (doneId) { resolvedTrips.add(String(doneId)); renderResult(filtered()); return; }
     const trip = r.trips.find(t => String(t.trip_id) === (openId || pngId));
     if (!trip) return;
     openId ? openTripModal(trip, r.rows) : openPngModal(trip, r.rows);

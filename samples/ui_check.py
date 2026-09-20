@@ -43,11 +43,11 @@ def main() -> int:
         page.wait_for_timeout(300)
         assert page.locator("#chargeTable tr", has_text="R-1005").count() == 1
 
-        # hiding a row is view-only: it leaves the table, totals stay put
+        # resolving a row is view-only: it leaves the table, totals stay put
         before_total = page.locator("#cards .card").nth(5).inner_text()
-        page.locator("#chargeTable tr", has_text="R-1003").first.locator("[data-hide]").click()
+        page.locator("#chargeTable tr", has_text="R-1003").first.locator("[data-resolve]").click()
         page.wait_for_timeout(300)
-        print("after hiding R-1003:", page.locator("#hiddenNote").inner_text())
+        print("after resolving R-1003:", page.locator("#resolvedNote").inner_text())
         assert page.locator("#chargeTable tr", has_text="R-1003").count() == 0
         assert page.locator("#cards .card").nth(5).inner_text() == before_total
         page.click("#showAll")
