@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Toll ↔ Turo matcher</title>
+<title>Tolls/tickets ↔ Turo matcher</title>
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --line:#272b35; --text:#e7e9ee; --muted:#9aa3b2; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#4c8dff; }
   * { box-sizing: border-box; }
@@ -49,15 +49,15 @@
 </head>
 <body>
 <header>
-  <h1>Toll ↔ Turo matcher</h1>
-  <p>Upload a toll bill (PDF/image) and your Turo trip export. Tolls are matched to trips by plate and timestamp.</p>
+  <h1>Tolls/tickets ↔ Turo matcher</h1>
+  <p>Upload a tolls/tickets bill (PDF/image) and your Turo trip export. Charges are matched to trips by plate and timestamp.</p>
 </header>
 <main>
   <section>
     <h2>1. Files</h2>
     <div class="grid">
       <div>
-        <label>Toll bill(s) — PDF, PNG, JPG, CSV</label>
+        <label>Tolls/tickets bill(s) — PDF, PNG, JPG, CSV</label>
         <input id="tollFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.csv,.txt" />
       </div>
       <div>
@@ -78,7 +78,7 @@
 
   <section id="resultSection" class="hidden">
     <h2>2. What to charge</h2>
-    <p class="muted">Ambiguous tolls fit more than one trip; they are charged in full to the best-ranked trip — check them. Unmatched tolls fall outside every trip's dates and are charged to nobody.</p>
+    <p class="muted">Ambiguous charges fit more than one trip; they are charged in full to the best-ranked trip — check them. Unmatched charges fall outside every trip's dates and are charged to nobody.</p>
     <div class="grid" style="margin-bottom:16px">
       <div><label>From date</label><input id="fFrom" type="date" /></div>
       <div><label>To date</label><input id="fTo" type="date" /></div>
@@ -90,7 +90,7 @@
     <div class="cards" id="cards"></div>
     <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button> <span class="muted" id="filterNote"></span></div>
     <div class="scroll"><table id="chargeTable"></table></div>
-    <h2 style="margin-top:22px">Per-toll detail</h2>
+    <h2 style="margin-top:22px">Line-item detail</h2>
     <div class="grid" style="margin-bottom:12px">
       <div><label>Plate</label><select id="dPlate"></select></div>
       <div>
@@ -108,7 +108,7 @@
   </section>
 
   <section id="tollSection" class="hidden">
-    <h2>3. Tolls read from the bill <span class="muted" id="tollCount"></span></h2>
+    <h2>3. Tolls/tickets read from the bill <span class="muted" id="tollCount"></span></h2>
     <p class="muted">Edit anything the OCR got wrong — matching updates instantly.</p>
     <div class="scroll"><table id="tollTable"></table></div>
   </section>
@@ -163,7 +163,7 @@ function settings() {
 
 $('parseBtn').onclick = async () => {
   const tollFiles = $('tollFiles').files, tripFile = $('tripFile').files[0];
-  if (!tollFiles.length || !tripFile) { $('parseStatus').textContent = 'Pick both a toll bill and a trip export.'; return; }
+  if (!tollFiles.length || !tripFile) { $('parseStatus').textContent = 'Pick both a tolls/tickets bill and a trip export.'; return; }
   const form = new FormData();
   [...tollFiles].forEach(f => form.append('toll_files', f));
   form.append('trip_file', tripFile);
@@ -179,7 +179,7 @@ $('parseBtn').onclick = async () => {
     parseId = data.parse_id;
     tolls = data.tolls.map(t => ({ ...t, ignored: false }));
     trips = data.trips;
-    $('parseStatus').textContent = `${tolls.length} toll line items, ${trips.length} trips.`;
+    $('parseStatus').textContent = `${tolls.length} bill line items, ${trips.length} trips.`;
     $('rawText').textContent = Object.entries(data.raw_text).map(([k, v]) => `--- ${k} ---\n${v}`).join('\n\n');
     ['tollSection','tripSection','resultSection','rawSection'].forEach(id => $(id).classList.remove('hidden'));
     renderTolls(); renderTrips(); populateFilters(); await runMatch();
@@ -299,7 +299,7 @@ function filtered() {
 
   const sum = (list, key) => +list.reduce((acc, r) => acc + Number(r[key] || 0), 0).toFixed(2);
   const unmatched = rows.filter(r => r.status === 'unmatched');
-  $('filterNote').textContent = active ? `filtered: ${rows.length} of ${lastResult.rows.length} tolls` : '';
+  $('filterNote').textContent = active ? `filtered: ${rows.length} of ${lastResult.rows.length} line items` : '';
   return {
     rows,
     trips: [...byTrip.values()].sort((a, b) => String(a.start).localeCompare(String(b.start))),
@@ -365,7 +365,7 @@ async function openPngModal(trip, rows) {
   if (pngUrl) URL.revokeObjectURL(pngUrl);
   pngUrl = URL.createObjectURL(blob);
   $('pngHead').innerHTML = `<h3>Bill rows — trip ${trip.trip_id}</h3>` +
-    `<div class="muted">${trip.guest} · ${money(trip.toll_total)} in tolls</div>`;
+    `<div class="muted">${trip.guest} · ${money(trip.toll_total)} in tolls/tickets</div>`;
   $('pngBody').innerHTML = `<img src="${pngUrl}" alt="bill rows for trip ${trip.trip_id}" />`;
   $('pngDownload').onclick = () => downloadBlob(`tolls-${trip.trip_id}.png`, blob);
   $('pngModal').classList.remove('hidden');
@@ -396,8 +396,8 @@ function openTripModal(trip, rows) {
     <div class="muted">${trip.vehicle} · ${trip.plate || 'no plate'} ·
       ${String(trip.start).replace('T',' ')} → ${String(trip.end).replace('T',' ')}</div>`;
   $('modalCards').innerHTML = `
-    <div class="card"><span class="muted">Tolls</span><b>${items.length}</b></div>
-    <div class="card"><span class="muted">Toll total</span><b>${money(trip.toll_total)}</b></div>
+    <div class="card"><span class="muted">Line items</span><b>${items.length}</b></div>
+    <div class="card"><span class="muted">Tolls/tickets total</span><b>${money(trip.toll_total)}</b></div>
     <div class="card"><span class="muted">Already charged by Turo</span><b>${money(trip.already_charged)}</b></div>
     <div class="card"><span class="muted">Charge guest</span><b>${money(trip.charge_total)}</b></div>`;
   $('modalTable').innerHTML =
@@ -426,15 +426,15 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 function renderResult(r) {
   const s = r.summary;
   $('cards').innerHTML = `
-    <div class="card"><span class="muted">Tolls</span><b>${s.toll_count}</b></div>
+    <div class="card"><span class="muted">Line items</span><b>${s.toll_count}</b></div>
     <div class="card"><span class="muted">Matched</span><b>${s.matched}</b></div>
     <div class="card"><span class="muted">Ambiguous (charged, best guess)</span><b>${s.ambiguous}</b></div>
     <div class="card"><span class="muted">Unmatched</span><b>${s.unmatched}</b></div>
-    <div class="card"><span class="muted">Toll total</span><b>${money(s.toll_total)}</b></div>
+    <div class="card"><span class="muted">Tolls/tickets total</span><b>${money(s.toll_total)}</b></div>
     <div class="card"><span class="muted">Charge total</span><b>${money(s.charge_total)}</b></div>`;
 
   $('chargeTable').innerHTML =
-    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Tolls</th><th>Toll total</th><th>Turo charged</th><th>Charge guest</th></tr>' +
+    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Items</th><th>Tolls/tickets total</th><th>Turo charged</th><th>Charge guest</th></tr>' +
     (r.trips.length ? r.trips.map(t => `
       <tr><td>${t.trip_id}</td>
       <td>${t.guest} <button type="button" class="toll-link" data-png="${t.trip_id}">bill</button></td>
@@ -458,9 +458,9 @@ function renderResult(r) {
     (!dPlate || (row.plate || '') === dPlate) && (!dStatus || row.status === dStatus));
   const detailSum = key => detailRows.reduce((acc, row) => acc + Number(row[key] || 0), 0);
   $('detailNote').innerHTML =
-    `<b>${detailRows.length}</b> toll${detailRows.length === 1 ? '' : 's'}` +
+    `<b>${detailRows.length}</b> item${detailRows.length === 1 ? '' : 's'}` +
     ((dPlate || dStatus) ? ` of ${r.rows.length}` : '') +
-    ` · toll total <b>${money(detailSum('amount'))}</b> · charged <b>${money(detailSum('charge'))}</b>`;
+    ` · bill total <b>${money(detailSum('amount'))}</b> · charged <b>${money(detailSum('charge'))}</b>`;
 
   $('detailTable').innerHTML =
     '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Trip</th><th>Guest</th><th>Charge</th></tr>' +

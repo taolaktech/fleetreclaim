@@ -1,13 +1,13 @@
-# Toll ↔ Turo matcher
+# Tolls/tickets ↔ Turo matcher
 
-Upload a toll bill (PDF or photo) plus a Turo trip export (CSV/XLSX) and get, per trip,
-how much to charge the guest.
+Upload a tolls/tickets bill (PDF or photo) plus a Turo trip export (CSV/XLSX) and get,
+per trip, how much to charge the guest.
 
 ## How it works
 
 1. **Read the bill** — text PDFs are parsed with `pdfplumber`; scanned PDFs and photos go
-   through Tesseract OCR. OCR word boxes are regrouped into visual rows so a toll's date,
-   plate, and amount stay on one line even in multi-column statements.
+   through Tesseract OCR. OCR word boxes are regrouped into visual rows so a line item's
+   date, plate, and amount stay on one line even in multi-column statements.
 2. **Read the trips** — column names are auto-detected (trip start/end, license plate,
    guest, vehicle, reservation id) from CSV or Excel. When there is no plate column, the
    plate is read out of the vehicle label, e.g. `Taofeek's Nissan (TX #VCG6008)`.
@@ -18,8 +18,9 @@ how much to charge the guest.
    tolls outside every trip's dates, or whose plate contradicts every candidate trip's
    plate, stay `unmatched` and are charged to nobody. Statement lines that are not tolls
    (tag-store rebills, card auto-charges, support-services system fees) are dropped while parsing.
-4. **Charge** — optional markup % and per-toll admin fee are applied; totals roll up per
-   trip and export to CSV.
+4. **Charge** — optional markup % and per-item admin fee are applied; anything Turo
+   already collected on the trip (its "Tolls & tickets" column) is subtracted, so only the
+   shortfall is owed. Totals roll up per trip and export to CSV.
 
 Everything parsed is editable in the browser, so OCR mistakes (plate `0` vs `O`, a wrong
 amount) can be fixed and matching re-runs instantly.

@@ -128,7 +128,7 @@ def main() -> int:
         page.fill("#excludeList", "Golden Gate Bridge")
         page.click("#parseBtn")
         page.wait_for_function(
-            "() => document.getElementById('parseStatus').textContent.includes('toll line items')",
+            "() => document.getElementById('parseStatus').textContent.includes('bill line items')",
             timeout=120_000,
         )
         excluded_rows = page.locator("#detailTable tr").count() - 1
