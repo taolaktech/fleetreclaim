@@ -92,6 +92,10 @@ def match(
     markup_pct: float = 0.0,
     fee_per_toll: float = 0.0,
 ) -> dict[str, Any]:
+    # A canceled booking never put the car on the road, so it can neither own a
+    # toll nor be billed: drop it before any pass looks for a window to match.
+    canceled = [trip for trip in trips if trip.get("canceled")]
+    trips = [trip for trip in trips if not trip.get("canceled")]
     results: list[dict[str, Any]] = []
 
     for toll in tolls:
@@ -210,5 +214,6 @@ def match(
             "toll_total": round(sum(float(r["amount"]) for r in results), 2),
             "charge_total": round(sum(t["charge_total"] for t in by_trip.values()), 2),
             "unmatched_total": round(sum(float(r["amount"]) for r in unmatched), 2),
+            "canceled_trips": len(canceled),
         },
     }

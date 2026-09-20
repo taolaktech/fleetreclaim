@@ -367,7 +367,7 @@
       <div class="pagehead">
         <div>
           <h1>Trips <span class="muted" id="tripCount"></span></h1>
-          <p>Amounts the marketplace already charged the guest are subtracted from what is still recoverable.</p>
+          <p>Amounts the marketplace already charged the guest are subtracted from what is still recoverable. Canceled trips are left out of matching — tick <b>Use</b> to include one anyway.</p>
         </div>
       </div>
       <section class="panel">
@@ -719,6 +719,13 @@ function counts() {
   };
 }
 
+/** What was read from the documents, including trips left out of matching. */
+function parseSummary() {
+  const dropped = trips.filter(t => t.canceled).length;
+  return `${tolls.length} transactions, ${trips.length} trips`
+    + (dropped ? `, ${dropped} canceled and excluded.` : '.');
+}
+
 function processing(text) {
   $('parseStatus').innerHTML = text
     ? `<span class="processing"><span class="spinner" aria-hidden="true"></span>${esc(text)}</span>`
@@ -758,13 +765,13 @@ $('parseBtn').onclick = async () => {
     tolls = data.tolls.map(t => ({ ...t, ignored: false }));
     trips = data.trips;
     resolvedTrips.clear();
-    $('parseStatus').textContent = `${tolls.length} transactions, ${trips.length} trips.`;
+    $('parseStatus').textContent = parseSummary();
     $('rawText').textContent = Object.entries(data.raw_text).map(([k, v]) => `--- ${k} ---\n${v}`).join('\n\n');
     renderTolls(); renderTrips(); populateFilters();
     processing('Matching vehicles and trip dates…');
     stage = 'matching';
     await runMatch();
-    $('parseStatus').textContent = `${tolls.length} transactions, ${trips.length} trips.`;
+    $('parseStatus').textContent = parseSummary();
     track('processing_succeeded', {
       processing_duration_ms: Date.now() - startedAt,
       expense_type: 'toll',
@@ -807,21 +814,26 @@ function renderTolls() {
 }
 
 function renderTrips() {
-  $('tripCount').textContent = `(${trips.length})`;
-  const head = '<thead><tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th><th class="num">Already charged</th></tr></thead>';
+  const dropped = trips.filter(t => t.canceled).length;
+  $('tripCount').textContent = dropped
+    ? `(${trips.length}, ${dropped} canceled and excluded)`
+    : `(${trips.length})`;
+  const head = '<thead><tr><th>Use</th><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th><th>Status</th><th class="num">Already charged</th></tr></thead>';
   $('tripTable').innerHTML = head + '<tbody>' + trips.map((t, i) => `
-    <tr>
+    <tr${t.canceled ? ' class="muted"' : ''}>
+      <td><input type="checkbox" aria-label="Match tolls against this trip" data-i="${i}" data-f="canceled" ${t.canceled ? '' : 'checked'} /></td>
       <td>${esc(t.trip_id)}</td><td>${esc(t.guest)}</td><td>${esc(t.vehicle)}</td>
       <td><input type="text" aria-label="Plate" data-i="${i}" data-f="plate" value="${esc(t.plate || '')}" size="8" /></td>
       <td>${esc(t.start)}</td><td>${esc(t.end)}</td>
+      <td>${esc(t.status || '')}</td>
       <td class="num"><input type="number" aria-label="Already charged" step="0.01" data-i="${i}" data-f="already_charged" value="${t.already_charged || 0}" size="6" /></td>
     </tr>`).join('') + '</tbody>';
   $('tripTable').oninput = e => {
     const { i, f } = e.target.dataset;
     if (i === undefined) return;
-    trips[i][f] = f === 'already_charged'
-      ? parseFloat(e.target.value) || 0
-      : e.target.value.toUpperCase();
+    if (f === 'canceled') trips[i].canceled = !e.target.checked;
+    else if (f === 'already_charged') trips[i][f] = parseFloat(e.target.value) || 0;
+    else trips[i][f] = e.target.value.toUpperCase();
     runMatch();
   };
 }
