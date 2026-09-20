@@ -39,7 +39,7 @@ WEB_CONFIG_KEYS = {
 }
 
 # Dev user for machines with no Firebase project configured (see auth_enabled()).
-DEV_USER = AuthUser(uid="dev-local", email="dev@localhost", name="Local dev")
+DEV_USER = AuthUser(uid="dev-local", email="dev@example.com", name="Local dev")
 
 
 def web_config() -> dict[str, str]:
