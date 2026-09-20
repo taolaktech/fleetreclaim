@@ -76,19 +76,8 @@
     </div>
   </section>
 
-  <section id="tollSection" class="hidden">
-    <h2>2. Tolls read from the bill <span class="muted" id="tollCount"></span></h2>
-    <p class="muted">Edit anything the OCR got wrong — matching updates instantly.</p>
-    <div class="scroll"><table id="tollTable"></table></div>
-  </section>
-
-  <section id="tripSection" class="hidden">
-    <h2>3. Trips <span class="muted" id="tripCount"></span></h2>
-    <div class="scroll"><table id="tripTable"></table></div>
-  </section>
-
   <section id="resultSection" class="hidden">
-    <h2>4. What to charge</h2>
+    <h2>2. What to charge</h2>
     <p class="muted">Ambiguous tolls fit more than one trip; they are charged in full to the best-ranked trip — check them. Unmatched tolls fall outside every trip's dates and are charged to nobody.</p>
     <div class="grid" style="margin-bottom:16px">
       <div><label>From date</label><input id="fFrom" type="date" /></div>
@@ -116,6 +105,17 @@
       <div style="align-self:end"><span class="muted" id="detailNote"></span></div>
     </div>
     <div class="scroll"><table id="detailTable"></table></div>
+  </section>
+
+  <section id="tollSection" class="hidden">
+    <h2>3. Tolls read from the bill <span class="muted" id="tollCount"></span></h2>
+    <p class="muted">Edit anything the OCR got wrong — matching updates instantly.</p>
+    <div class="scroll"><table id="tollTable"></table></div>
+  </section>
+
+  <section id="tripSection" class="hidden">
+    <h2>4. Trips <span class="muted" id="tripCount"></span></h2>
+    <div class="scroll"><table id="tripTable"></table></div>
   </section>
 
   <div id="tripModal" class="backdrop hidden">
