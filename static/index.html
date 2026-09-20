@@ -508,16 +508,16 @@ function renderResult(r) {
   if (resolvedHere) $('showAll').onclick = () => { resolvedTrips.clear(); renderResult(filtered()); };
 
   $('chargeTable').innerHTML =
-    '<tr><th>Resolve</th><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Items</th><th>Tolls/tickets total</th><th>Turo charged</th><th>Charge guest</th></tr>' +
+    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Items</th><th>Tolls/tickets total</th><th>Turo charged</th><th>Charge guest</th><th>Resolve</th></tr>' +
     (shown.length ? shown.map(t => `
-      <tr><td>${t.toll_count ? `<button type="button" class="toll-link" data-resolve="${t.trip_id}" title="Mark this trip resolved and take it off the list">resolve</button>` : ''}</td>
-      <td>${t.trip_id}</td>
+      <tr><td>${t.trip_id}</td>
       <td>${t.guest}${t.toll_count ? ` <button type="button" class="toll-link" data-png="${t.trip_id}" title="View bill evidence">\u{1F9FE}</button>` : ''}</td>
       <td>${t.vehicle}</td><td>${t.plate}</td>
       <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
       <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
       <td>${money(t.toll_total)}</td><td class="muted">${money(t.already_charged)}</td>
-      <td><b>${money(t.charge_total)}</b></td></tr>`).join('')
+      <td><b>${money(t.charge_total)}</b></td>
+      <td>${t.toll_count ? `<button type="button" class="toll-link" data-resolve="${t.trip_id}" title="Mark this trip resolved and take it off the list">resolve</button>` : ''}</td></tr>`).join('')
       : '<tr><td colspan="10" class="muted">No matches yet.</td></tr>');
 
   $('chargeTable').onclick = e => {
