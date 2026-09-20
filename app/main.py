@@ -63,6 +63,11 @@ def login() -> FileResponse:
     return _page("login.html")
 
 
+@app.get("/logo.png")
+def logo() -> FileResponse:
+    return FileResponse(STATIC / "logo.png", media_type="image/png")
+
+
 @app.get("/auth.js")
 def auth_module() -> FileResponse:
     return FileResponse(STATIC / "auth.js", media_type="text/javascript")
