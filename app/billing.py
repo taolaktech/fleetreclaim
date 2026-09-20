@@ -35,6 +35,7 @@ class Plan:
     key: str
     name: str
     price_env: str
+    trial_days: int = 0
 
     @property
     def price_id(self) -> str:
@@ -45,7 +46,7 @@ class Plan:
 # send; price ids stay server-side.
 PLANS: dict[str, Plan] = {
     "monthly": Plan("monthly", "Monthly", "STRIPE_PRICE_MONTHLY"),
-    "yearly": Plan("yearly", "Yearly", "STRIPE_PRICE_YEARLY"),
+    "yearly": Plan("yearly", "Yearly", "STRIPE_PRICE_YEARLY", trial_days=30),
 }
 
 
@@ -53,9 +54,13 @@ def configured() -> bool:
     return bool(os.environ.get("STRIPE_SECRET_KEY"))
 
 
-def available_plans() -> list[dict[str, str]]:
+def available_plans() -> list[dict[str, Any]]:
     """Plans with a configured Stripe price, for the browser to render."""
-    return [{"key": p.key, "name": p.name} for p in PLANS.values() if p.price_id]
+    return [
+        {"key": p.key, "name": p.name, "trialDays": p.trial_days}
+        for p in PLANS.values()
+        if p.price_id
+    ]
 
 
 def _stripe() -> Any:
@@ -84,7 +89,21 @@ def find_customer(user: AuthUser) -> Any | None:
         )
     except Exception as exc:
         raise _fail(exc, "Could not reach Stripe. Try again in a moment.") from exc
-    return found.data[0] if found.data else None
+    if found.data:
+        return found.data[0]
+
+    # Stripe's search index lags creation by up to a minute, which would hide a
+    # customer moments after checkout. The email lookup is not the identity
+    # check: the uid on the record still is.
+    if not user.email:
+        return None
+    try:
+        recent = stripe.Customer.list(email=user.email, limit=20)
+    except Exception as exc:
+        raise _fail(exc, "Could not reach Stripe. Try again in a moment.") from exc
+    return next(
+        (c for c in recent.data if (c.get("metadata") or {}).get(UID_KEY) == user.uid), None
+    )
 
 
 def get_or_create_customer(user: AuthUser) -> Any:
@@ -201,6 +220,10 @@ def create_checkout(user: AuthUser, plan_key: str, base_url: str) -> str:
             status_code=409, detail="You already have a subscription — manage it from Billing."
         )
 
+    subscription_data: dict[str, Any] = {"metadata": {UID_KEY: user.uid, "plan": plan.key}}
+    if plan.trial_days:
+        subscription_data["trial_period_days"] = plan.trial_days
+
     stripe = _stripe()
     try:
         session = stripe.checkout.Session.create(
@@ -210,7 +233,7 @@ def create_checkout(user: AuthUser, plan_key: str, base_url: str) -> str:
             success_url=f"{base_url}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base_url}/?view=billing",
             client_reference_id=user.uid,
-            subscription_data={"metadata": {UID_KEY: user.uid, "plan": plan.key}},
+            subscription_data=subscription_data,
             metadata={UID_KEY: user.uid, "plan": plan.key},
             allow_promotion_codes=True,
         )

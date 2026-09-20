@@ -109,7 +109,9 @@ already exists.
 
 1. Products → add one product with two **recurring** prices, monthly and yearly;
    copy the `price_…` ids into `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY`.
-   An interval with no configured price is not offered in the UI.
+   An interval with no configured price is not offered in the UI. Yearly carries
+   a 30-day free trial, applied by Checkout as `subscription_data.trial_period_days`
+   (Stripe's Trial Offer objects, `to_…`, are not supported by hosted Checkout).
 2. Developers → API keys → copy the secret key into `STRIPE_SECRET_KEY`
    (test key while developing, live key in production).
 3. Settings → Billing → Customer portal → activate it, and allow cancellation

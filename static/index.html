@@ -470,7 +470,7 @@ onAuth(state => {
 const billingBody = document.getElementById('billingBody');
 
 const STATUS_TEXT = {
-  active: 'Active', trialing: 'Trial', past_due: 'Payment failed', unpaid: 'Unpaid',
+  active: 'Active', trialing: 'Free trial', past_due: 'Payment failed', unpaid: 'Unpaid',
   incomplete: 'Awaiting payment', incomplete_expired: 'Checkout expired', canceled: 'Canceled',
   paused: 'Paused', none: 'No subscription',
 };
@@ -487,7 +487,7 @@ onBilling(b => {
   if (!b.hasSubscription || ['canceled', 'incomplete_expired'].includes(b.status)) {
     billingBody.innerHTML = b.plans.length
       ? `<p style="margin:0 0 12px">Choose how you want to be billed. Payment is handled by Stripe.</p>
-         <div class="row">${b.plans.map(p => `<button class="btn" data-plan="${esc(p.key)}">${esc(p.name)}</button>`).join('')}</div>`
+         <div class="row">${b.plans.map(p => `<button class="btn" data-plan="${esc(p.key)}">${esc(p.name)}${p.trialDays ? ` — ${p.trialDays} days free` : ''}</button>`).join('')}</div>`
       : '<p class="muted" style="margin:0">No plans are configured yet.</p>';
     return;
   }
@@ -495,7 +495,10 @@ onBilling(b => {
   const rows = [
     ['Billing', b.planName || '—'],
     ['Status', STATUS_TEXT[b.status] || b.status],
-    [b.cancelAtPeriodEnd ? 'Access until' : 'Next billing date', until || '—'],
+    [
+      b.cancelAtPeriodEnd ? 'Access until' : b.status === 'trialing' ? 'Trial ends' : 'Next billing date',
+      until || '—',
+    ],
   ];
   billingBody.innerHTML = `
     ${b.inGrace ? '<p style="margin:0 0 12px;color:var(--color-danger)">Your last payment failed. Update your payment method to keep your subscription.</p>' : ''}

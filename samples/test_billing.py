@@ -52,6 +52,7 @@ class FakeStripe:
         self.modified: list[tuple[str, bool]] = []
         self.idempotency_keys: list[str] = []
         self.checkout_args: dict = {}
+        self.search_blind = False  # mimic Stripe's lagging search index
         self.portal_args: dict = {}
         self.signature_ok = True
 
@@ -60,8 +61,15 @@ class FakeStripe:
         class Customer:
             @staticmethod
             def search(query, limit=1):
+                if stripe.search_blind:
+                    return Obj(data=[])
                 uid = query.split("'")[-2]
                 hits = [c for c in stripe.customers if c["metadata"].get(billing.UID_KEY) == uid]
+                return Obj(data=hits[:limit])
+
+            @staticmethod
+            def list(email=None, limit=20):
+                hits = [c for c in stripe.customers if c["email"] == email]
                 return Obj(data=hits[:limit])
 
             @staticmethod
@@ -205,6 +213,28 @@ def test_checkout_uses_the_uid_customer_and_server_side_price() -> None:
     assert args["customer"] == fake.customers[0].id
     assert fake.customers[0]["metadata"][billing.UID_KEY] == ALICE.uid
     assert fake.idempotency_keys == [f"customer:{ALICE.uid}"]
+
+
+def test_yearly_checkout_carries_the_free_trial_and_monthly_does_not() -> None:
+    fake = setup(**STRIPE_ENV)
+    billing.create_checkout(ALICE, "yearly", "http://localhost:8080")
+    assert fake.checkout_args["subscription_data"]["trial_period_days"] == 30
+
+    fake = setup(**STRIPE_ENV)
+    billing.create_checkout(BOB, "monthly", "http://localhost:8080")
+    assert "trial_period_days" not in fake.checkout_args["subscription_data"]
+
+
+def test_customer_is_found_before_stripes_search_index_catches_up() -> None:
+    fake = setup(**STRIPE_ENV)
+    fake.add_customer(ALICE)
+    fake.add_customer(BOB)
+    fake.search_blind = True
+    found = billing.find_customer(ALICE)
+    assert found is not None and found["metadata"][billing.UID_KEY] == ALICE.uid
+    # An email match without the uid is still not this user.
+    fake.customers[0]["metadata"] = {}
+    assert billing.find_customer(ALICE) is None
 
 
 def test_existing_customer_is_reused_across_sessions() -> None:
