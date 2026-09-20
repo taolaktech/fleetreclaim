@@ -13,15 +13,20 @@ def main() -> int:
         browser = p.chromium.connect_over_cdp("http://localhost:29229")
         page = browser.contexts[0].new_page()
         page.goto("http://localhost:8080", wait_until="load")
+        dashboard = lambda: page.click('.navitem[data-view="dashboard"]')
         page.fill("#excludeList", "")  # a previous run may have saved exclusions
         page.set_input_files("#tollFiles", str(HERE / "toll_bill.pdf"))
         page.set_input_files("#tripFile", str(HERE / "trips.csv"))
         page.click("#parseBtn")
-        page.wait_for_selector("#chargeTable tr:nth-child(2)", timeout=120_000)
+        page.wait_for_selector("#chargeTable tbody tr", timeout=120_000)
 
-        rows = lambda: page.locator("#detailTable tr").count() - 1
+        # processing jumps straight to the recovery view
+        assert page.locator('.view[data-view="charge"]:not(.hidden)').count() == 1
+
+        rows = lambda: page.locator("#detailTable tbody tr").count()
         all_rows = rows()
-        print("rows unfiltered:", all_rows, "| charge total:", page.locator("#cards .card").nth(4).inner_text().replace("\n", " "))
+        total_card = lambda: page.locator("#cards2 .card").nth(4).inner_text().replace("\n", " ")
+        print("rows unfiltered:", all_rows, "| charge total:", total_card())
 
         # R-1001 has $10 already already billed, so only the shortfall is charged.
         r1001 = page.locator("#chargeTable tr", has_text="R-1001").first
@@ -44,12 +49,12 @@ def main() -> int:
         assert no_rows.locator("[data-resolve]").count() == 0  # and nothing to resolve
 
         # resolving a row is view-only: it leaves the table, totals stay put
-        before_total = page.locator("#cards .card").nth(4).inner_text()
+        before_total = total_card()
         page.locator("#chargeTable tr", has_text="R-1003").first.locator("[data-resolve]").click()
         page.wait_for_timeout(300)
         print("after resolving R-1003:", page.locator("#resolvedNote").inner_text())
         assert page.locator("#chargeTable tr", has_text="R-1003").count() == 0
-        assert page.locator("#cards .card").nth(4).inner_text() == before_total
+        assert total_card() == before_total
         page.click("#showAll")
         page.wait_for_timeout(300)
         assert page.locator("#chargeTable tr", has_text="R-1003").count() == 1
@@ -98,7 +103,7 @@ def main() -> int:
         plates = page.locator("#detailTable tr td:nth-child(5)").all_inner_texts()
         print("detail plate filter:", plates)
         assert plates and set(plates) == {"KJL4821"}, plates
-        trip_rows = page.locator("#chargeTable tr").count() - 1
+        trip_rows = page.locator("#chargeTable tbody tr").count()
         assert trip_rows == 4, trip_rows  # detail filters must not touch the charge table
 
         page.click("#clearFilters")
@@ -106,7 +111,7 @@ def main() -> int:
         expected = int(count_link.inner_text())
         count_link.click()
         page.wait_for_selector("#tripModal:not(.hidden)", timeout=5_000)
-        modal_rows = page.locator("#modalTable tr").count() - 1
+        modal_rows = page.locator("#modalTable tbody tr").count()
         print("modal:", page.locator("#modalHead").inner_text().replace("\n", " | "), "| rows:", modal_rows)
         assert modal_rows == expected, (modal_rows, expected)
         with page.expect_download() as trip_dl:
@@ -145,13 +150,14 @@ def main() -> int:
         page.screenshot(path=str(HERE / "ui_filters.png"), full_page=True)
 
         # user-defined exclusion phrase drops the matching bill lines at parse time
+        dashboard()
         page.fill("#excludeList", "Golden Gate Bridge")
         page.click("#parseBtn")
         page.wait_for_function(
-            "() => document.getElementById('parseStatus').textContent.includes('bill line items')",
+            "() => /\\d+ transactions,/.test(document.getElementById('parseStatus').textContent)",
             timeout=120_000,
         )
-        excluded_rows = page.locator("#detailTable tr").count() - 1
+        excluded_rows = page.locator("#detailTable tbody tr").count()
         print("after custom exclusion:", page.locator("#parseStatus").inner_text())
         assert excluded_rows == all_rows - 1, (excluded_rows, all_rows)
         assert "Golden Gate" not in page.locator("#detailTable").inner_text()
@@ -163,9 +169,19 @@ def main() -> int:
         assert "trips.csv" in note, note
         page.set_input_files("#tollFiles", str(HERE / "toll_bill.pdf"))
         page.click("#parseBtn")
-        page.wait_for_selector("#chargeTable tr:nth-child(2)", timeout=120_000)
+        page.wait_for_selector("#chargeTable tbody tr", timeout=120_000)
+        dashboard()
         print("reparsed from cached trips:", page.locator("#parseStatus").inner_text())
         assert "5 trips" in page.locator("#parseStatus").inner_text()
+
+        # the shell: every nav target renders, and the editable tables survive
+        for view in ("items", "trips", "billing", "diagnostics", "charge"):
+            page.click(f'.navitem[data-view="{view}"]')
+            assert page.locator(f'.view[data-view="{view}"]:not(.hidden)').count() == 1, view
+        page.click('.navitem[data-view="items"]')
+        assert page.locator("#tollTable tbody tr").count() > 0
+        page.click('.navitem[data-view="trips"]')
+        assert page.locator("#tripTable tbody tr").count() == 5
 
         page.close()
     print("UI check passed")

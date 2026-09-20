@@ -3,176 +3,407 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Tolls/tickets ↔ trips matcher</title>
+<title>FleetReclaim — expense resolution</title>
 <style>
-  :root { --bg:#0f1115; --panel:#171a21; --line:#272b35; --text:#e7e9ee; --muted:#9aa3b2; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#4c8dff; }
-  * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
-  header { padding:20px 28px; border-bottom:1px solid var(--line); }
-  h1 { margin:0; font-size:18px; }
-  header p { margin:6px 0 0; color:var(--muted); }
-  main { padding:24px 28px 60px; max-width:1200px; }
-  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:18px; }
-  h2 { font-size:14px; margin:0 0 12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
-  label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
-  input, button, textarea { font:inherit; }
-  input[type=file], input[type=number], input[type=text], input[type=date], select, textarea { width:100%; background:#0d1017; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; }
-  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:9px 16px; cursor:pointer; }
-  button.secondary { background:#2a2f3a; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--panel); }
-  td input { padding:4px 6px; }
-  .scroll { max-height:420px; overflow:auto; }
-  .pill { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
-  .matched { background:rgba(63,185,80,.15); color:var(--ok); }
-  .unmatched { background:rgba(248,81,73,.15); color:var(--bad); }
-  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
-  .card { background:#0d1017; border:1px solid var(--line); border-radius:8px; padding:12px; }
-  .card b { display:block; font-size:20px; margin-top:4px; }
-  .muted { color:var(--muted); }
-  .toll-link { background:none; border:0; padding:0; color:var(--accent); font:inherit; cursor:pointer; text-decoration:underline; }
-  .backdrop { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto; z-index:10; }
-  .modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; width:min(900px,100%); }
-  .modal h3 { margin:0 0 4px; font-size:16px; }
-  .modal .cards { margin:14px 0; }
-  .bill { margin-top:14px; }
-  .bill img { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; }
-  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  details summary { cursor:pointer; color:var(--muted); }
-  pre { white-space:pre-wrap; background:#0d1017; padding:10px; border-radius:6px; max-height:300px; overflow:auto; font-size:12px; }
+  :root {
+    --color-primary:#003B2A; --color-primary-hover:#00563d; --color-header:#003B2A;
+    --color-background:#F5F7F8; --color-surface:#ffffff; --color-surface-alt:#fafbfc;
+    --color-border:#dde2e6; --color-border-strong:#c6ced4;
+    --color-text:#16211f; --color-text-muted:#66757e;
+    --color-success:#137a3f; --color-warning:#a86400; --color-danger:#b42318; --color-link:#1a5fd0;
+    --radius:6px; --header-h:52px; --sidebar-w:216px;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    margin:0; background:var(--color-background); color:var(--color-text);
+    font:13px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  a, .linkish { color:var(--color-link); }
+  .muted { color:var(--color-text-muted); }
   .hidden { display:none !important; }
-  .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; }
-  .user { display:flex; align-items:center; gap:10px; }
-  .user img { width:32px; height:32px; border-radius:50%; }
-  .user .who { line-height:1.2; }
-  .user .who span { display:block; color:var(--muted); font-size:12px; }
-  #authGate { display:flex; align-items:center; justify-content:center; padding:80px 20px; color:var(--muted); }
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+  :focus-visible { outline:2px solid var(--color-link); outline-offset:2px; }
+
+  /* ---------- header ---------- */
+  .appbar {
+    height:var(--header-h); background:var(--color-header); color:#eaf3ef;
+    display:flex; align-items:center; gap:12px; padding:0 14px;
+    position:fixed; inset:0 0 auto 0; z-index:30;
+  }
+  .appbar .brand { display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:.2px; font-size:15px; color:#fff; }
+  .brand .mark {
+    width:24px; height:24px; border-radius:5px; background:#12a06a; color:#00291d;
+    display:grid; place-items:center; font-size:13px; font-weight:800;
+  }
+  .appbar .spacer { flex:1; }
+  .iconbtn {
+    background:transparent; border:1px solid transparent; color:inherit; border-radius:var(--radius);
+    height:30px; min-width:30px; padding:0 7px; cursor:pointer; font:inherit; display:inline-flex;
+    align-items:center; justify-content:center; gap:6px;
+  }
+  .iconbtn:hover { background:rgba(255,255,255,.12); }
+  .usermenu { position:relative; }
+  .usertrigger {
+    display:flex; align-items:center; gap:8px; background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.16); color:#fff; border-radius:999px;
+    padding:3px 10px 3px 3px; cursor:pointer; font:inherit; max-width:230px;
+  }
+  .usertrigger:hover { background:rgba(255,255,255,.16); }
+  .usertrigger img, .usertrigger .avatar {
+    width:26px; height:26px; border-radius:50%; background:#12a06a; color:#00291d;
+    display:grid; place-items:center; font-weight:700; font-size:12px; flex:none;
+  }
+  .usertrigger .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; }
+  .usermenu .menu {
+    position:absolute; right:0; top:calc(100% + 6px); min-width:220px; background:var(--color-surface);
+    border:1px solid var(--color-border); border-radius:8px; box-shadow:0 8px 24px rgba(16,24,40,.14);
+    padding:6px; color:var(--color-text); z-index:40;
+  }
+  .usermenu .menu .who { padding:8px 10px 10px; border-bottom:1px solid var(--color-border); margin-bottom:6px; }
+  .usermenu .menu .who b { display:block; font-size:13px; }
+  .usermenu .menu button {
+    display:block; width:100%; text-align:left; background:none; border:0; padding:8px 10px;
+    border-radius:var(--radius); font:inherit; color:inherit; cursor:pointer;
+  }
+  .usermenu .menu button:hover { background:var(--color-surface-alt); }
+
+  /* ---------- shell ---------- */
+  .shell { padding-top:var(--header-h); display:flex; min-height:100vh; }
+  .sidebar {
+    width:var(--sidebar-w); flex:none; background:var(--color-surface); border-right:1px solid var(--color-border);
+    position:fixed; top:var(--header-h); bottom:0; left:0; overflow:auto; padding:10px 8px; z-index:20;
+  }
+  .sidebar .group { font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--color-text-muted); padding:12px 10px 6px; }
+  .navitem {
+    display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; cursor:pointer;
+    font:inherit; color:var(--color-text); padding:8px 10px; border-radius:var(--radius); text-align:left;
+    border-left:3px solid transparent;
+  }
+  .navitem:hover { background:var(--color-surface-alt); }
+  .navitem[aria-current="page"] { background:#eaf4ef; color:var(--color-primary); font-weight:600; border-left-color:var(--color-primary); }
+  .navitem .ico { width:16px; height:16px; flex:none; fill:none; stroke:currentColor; stroke-width:1.3; stroke-linecap:round; stroke-linejoin:round; }
+  .navitem .tag { margin-left:auto; font-size:10px; color:var(--color-text-muted); border:1px solid var(--color-border); border-radius:999px; padding:1px 6px; }
+  .content { flex:1; margin-left:var(--sidebar-w); padding:16px 20px 60px; min-width:0; }
+  body.nav-collapsed { --sidebar-w:56px; }
+  body.nav-collapsed .navitem .label, body.nav-collapsed .navitem .tag, body.nav-collapsed .sidebar .group { display:none; }
+  body.nav-collapsed .navitem { justify-content:center; padding:9px 4px; }
+
+  .pagehead { display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+  .pagehead h1 { margin:0; font-size:18px; }
+  .pagehead p { margin:4px 0 0; color:var(--color-text-muted); }
+
+  /* ---------- surfaces ---------- */
+  .panel { background:var(--color-surface); border:1px solid var(--color-border); border-radius:8px; margin-bottom:16px; }
+  .panel > header {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:10px 14px; border-bottom:1px solid var(--color-border);
+  }
+  .panel > header h2 { margin:0; font-size:13px; letter-spacing:.02em; }
+  .panel .body { padding:14px; }
+  .step { display:inline-grid; place-items:center; width:19px; height:19px; border-radius:50%; background:var(--color-primary); color:#fff; font-size:11px; font-weight:700; flex:none; }
+
+  label { display:block; font-size:11.5px; color:var(--color-text-muted); margin-bottom:4px; font-weight:600; }
+  input, button, textarea, select { font:inherit; }
+  input[type=file], input[type=number], input[type=text], input[type=date], select, textarea {
+    width:100%; background:var(--color-surface); color:var(--color-text);
+    border:1px solid var(--color-border-strong); border-radius:var(--radius); padding:6px 8px; height:32px;
+  }
+  textarea { height:auto; resize:vertical; }
+  input[type=file] { padding:4px 6px; }
+  input:focus, select:focus, textarea:focus { border-color:var(--color-primary); outline:none; box-shadow:0 0 0 3px rgba(0,59,42,.12); }
+  button.btn {
+    background:var(--color-primary); color:#fff; border:1px solid var(--color-primary); border-radius:var(--radius);
+    padding:0 14px; height:32px; cursor:pointer; font-weight:600;
+  }
+  button.btn:hover { background:var(--color-primary-hover); }
+  button.btn.secondary { background:var(--color-surface); color:var(--color-text); border-color:var(--color-border-strong); font-weight:500; }
+  button.btn.secondary:hover { background:var(--color-surface-alt); }
+  button.btn:disabled { opacity:.55; cursor:not-allowed; }
+  .linkbtn { background:none; border:0; padding:0; color:var(--color-link); font:inherit; cursor:pointer; text-decoration:underline; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+
+  /* ---------- upload ---------- */
+  .drop { border:1px dashed var(--color-border-strong); border-radius:var(--radius); background:var(--color-surface-alt); padding:12px; }
+  .drop label { margin-bottom:6px; }
+
+  /* ---------- stat cards ---------- */
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:10px; }
+  .card { background:var(--color-surface); border:1px solid var(--color-border); border-radius:8px; padding:10px 12px; }
+  .card span { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--color-text-muted); }
+  .card b { display:block; font-size:20px; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .card.primary { background:#00301f; border-color:#00301f; }
+  .card.primary span { color:#9fd8c0; }
+  .card.primary b { color:#fff; font-size:22px; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar {
+    display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;
+    background:var(--color-surface-alt); border:1px solid var(--color-border); border-radius:var(--radius);
+    padding:10px 12px; margin-bottom:14px;
+  }
+  .toolbar .field { min-width:140px; flex:1 1 140px; }
+  .toolbar .field.narrow { flex:0 0 130px; }
+  .toolbar .check { display:flex; align-items:center; gap:6px; height:32px; font-size:12.5px; }
+  .toolbar .check input { width:auto; height:auto; }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow:auto; max-height:460px; border-top:1px solid var(--color-border); }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--color-border); vertical-align:middle; white-space:nowrap; }
+  th {
+    position:sticky; top:0; z-index:1; background:var(--color-surface-alt); color:var(--color-text-muted);
+    font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--color-border-strong);
+  }
+  tbody tr:hover { background:#f4f8f6; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  td.wrap { white-space:normal; max-width:320px; }
+  td.trunc { max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+  td input { height:26px; padding:3px 6px; min-width:96px; }
+  td input[type=checkbox] { height:auto; width:auto; min-width:0; }
+  .empty { padding:22px 12px; text-align:center; color:var(--color-text-muted); }
+
+  /* ---------- badges ---------- */
+  .badge { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600; border:1px solid transparent; }
+  .badge.matched { background:#e7f4ec; color:var(--color-success); border-color:#c3e3d0; }
+  .badge.unmatched { background:#fdeceb; color:var(--color-danger); border-color:#f6cfcc; }
+  .badge.review { background:#fdf3e2; color:var(--color-warning); border-color:#f2ddb6; }
+  .badge.neutral { background:#eef1f3; color:var(--color-text-muted); border-color:var(--color-border); }
+
+  /* ---------- modals ---------- */
+  .backdrop { position:fixed; inset:0; background:rgba(9,20,16,.5); display:flex; align-items:flex-start; justify-content:center; padding:36px 16px; overflow:auto; z-index:50; }
+  .modal { background:var(--color-surface); border:1px solid var(--color-border); border-radius:10px; width:min(960px,100%); box-shadow:0 18px 44px rgba(16,24,40,.22); }
+  .modal > header { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--color-border); flex-wrap:wrap; }
+  .modal h3 { margin:0 0 3px; font-size:15px; }
+  .modal .body { padding:14px 16px 16px; }
+  .modal .cards { margin-bottom:14px; }
+  .evidence { background:#fff; border:1px solid var(--color-border); border-radius:var(--radius); padding:10px; max-height:62vh; overflow:auto; text-align:center; }
+  .evidence img { max-width:100%; }
+
+  /* ---------- misc ---------- */
+  .processing { display:flex; align-items:center; gap:9px; color:var(--color-text-muted); }
+  .spinner { width:14px; height:14px; border:2px solid var(--color-border-strong); border-top-color:var(--color-primary); border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration:3s; } }
+  .toasts { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:60; }
+  .toast { background:var(--color-surface); border:1px solid var(--color-border); border-left:3px solid var(--color-primary); border-radius:var(--radius); padding:9px 12px; box-shadow:0 6px 18px rgba(16,24,40,.14); max-width:320px; }
+  .toast.error { border-left-color:var(--color-danger); }
+  pre { white-space:pre-wrap; background:var(--color-surface-alt); border:1px solid var(--color-border); padding:10px; border-radius:var(--radius); max-height:320px; overflow:auto; font-size:11.5px; }
+  #authGate { display:flex; align-items:center; justify-content:center; gap:10px; padding:96px 20px; color:var(--color-text-muted); }
+
+  @media (max-width: 900px) {
+    .sidebar { transform:translateX(-100%); visibility:hidden; transition:transform .15s ease, visibility .15s ease; box-shadow:0 10px 30px rgba(16,24,40,.18); }
+    body.nav-open .sidebar { transform:none; visibility:visible; }
+    .content { margin-left:0; padding:14px; }
+    body.nav-collapsed { --sidebar-w:216px; }
+    body.nav-collapsed .navitem .label, body.nav-collapsed .navitem .tag, body.nav-collapsed .sidebar .group { display:revert; }
+    body.nav-collapsed .navitem { justify-content:flex-start; padding:8px 10px; }
+    .scrim { position:fixed; inset:var(--header-h) 0 0 0; background:rgba(9,20,16,.35); z-index:15; }
+    table { min-width:760px; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <div class="topbar">
-    <div>
-      <h1>Tolls/tickets ↔ trips matcher</h1>
-      <p>Upload a tolls/tickets bill (PDF/image) and your marketplace trip export. Charges are matched to trips by plate and timestamp.</p>
-    </div>
-    <div id="userMenu" class="user hidden"></div>
-  </div>
+<header class="appbar">
+  <button id="navToggle" class="iconbtn" aria-label="Toggle navigation" aria-expanded="true">☰</button>
+  <div class="brand"><span class="mark" aria-hidden="true">FR</span> FleetReclaim</div>
+  <div class="spacer"></div>
+  <div id="userMenu" class="usermenu hidden"></div>
 </header>
-<div id="authGate">Checking your sign-in…</div>
-<main id="app" class="hidden">
-  <section>
-    <h2>1. Files</h2>
-    <div class="grid">
-      <div>
-        <label>Tolls/tickets bill(s) — PDF, PNG, JPG, CSV</label>
-        <input id="tollFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.csv,.txt" />
-      </div>
-      <div>
-        <label>Trips export — CSV or XLSX</label>
-        <input id="tripFile" type="file" accept=".csv,.xlsx,.xls" />
-        <p class="muted" id="tripCacheNote" style="margin:6px 0 0"></p>
-      </div>
-    </div>
-    <div style="margin-top:14px">
-      <label>Exclude bill lines containing (one phrase per line)</label>
-      <textarea id="excludeList" rows="3" placeholder="SUPPORT SERVICES, SYSTEM&#10;REBILL TAG STORE"></textarea>
-      <p class="muted">Case-insensitive. Tag-store rebills, card auto-charges and "SUPPORT SERVICES, SYSTEM" are always excluded.</p>
-    </div>
-    <div class="row" style="margin-top:14px">
-      <button id="parseBtn">Parse files</button>
-      <span id="parseStatus" class="muted"></span>
-    </div>
-  </section>
 
-  <section id="resultSection" class="hidden">
-    <h2>2. What to charge</h2>
-    <p class="muted">Charges that fit more than one trip go in full to the best-ranked trip. Unmatched charges fall outside every trip's dates and are charged to nobody.</p>
-    <div class="grid" style="margin-bottom:16px">
-      <div><label>From date</label><input id="fFrom" type="date" /></div>
-      <div><label>To date</label><input id="fTo" type="date" /></div>
-      <div><label>Vehicle</label><select id="fVehicle"></select></div>
-      <div><label>Plate</label><select id="fPlate"></select></div>
-      <div><label>Trip #</label><input id="fTrip" type="text" placeholder="e.g. 58691937" /></div>
-      <div style="align-self:end">
-        <label class="row" style="gap:6px; margin:0">
-          <input id="fSettled" type="checkbox" style="width:auto" checked />
-          Hide trips already settled
-        </label>
-      </div>
-      <div style="align-self:end"><button id="clearFilters" class="secondary">Clear filters</button></div>
-    </div>
-    <div class="cards" id="cards"></div>
-    <div style="margin:18px 0 8px"><button id="exportBtn" class="secondary">Download CSV</button> <span class="muted" id="filterNote"></span> <span class="muted" id="resolvedNote"></span></div>
-    <div class="scroll"><table id="chargeTable"></table></div>
-    <h2 style="margin-top:22px">Line-item detail</h2>
-    <div class="grid" style="margin-bottom:12px">
-      <div><label>Plate</label><select id="dPlate"></select></div>
-      <div>
-        <label>Status</label>
-        <select id="dStatus">
-          <option value="">All</option>
-          <option value="matched">matched</option>
-          <option value="unmatched">unmatched</option>
-        </select>
-      </div>
-      <div style="align-self:end"><span class="muted" id="detailNote"></span></div>
-    </div>
-    <div class="scroll"><table id="detailTable"></table></div>
-  </section>
+<div id="authGate"><span class="spinner" aria-hidden="true"></span> Checking your sign-in…</div>
 
-  <section id="tollSection" class="hidden">
-    <h2>3. Tolls/tickets read from the bill <span class="muted" id="tollCount"></span></h2>
-    <p class="muted">Edit anything the OCR got wrong — matching updates instantly.</p>
-    <div class="scroll"><table id="tollTable"></table></div>
-  </section>
+<div id="app" class="shell hidden">
+  <nav class="sidebar" id="sidebar" aria-label="Sections">
+    <div class="group">Expense resolution</div>
+    <button class="navitem" data-view="dashboard" aria-current="page" aria-label="Dashboard" title="Dashboard"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5" height="11" rx="1"/><rect x="9.5" y="2.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="4" rx="1"/></svg><span class="label">Dashboard</span></button>
+    <button class="navitem" data-view="charge" aria-label="Recovery" title="Recovery"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5v7M10 6.2c-.5-.7-1.2-1-2-1-1 0-1.8.5-1.8 1.3 0 2 3.8.9 3.8 2.9 0 .9-.9 1.4-2 1.4-.9 0-1.6-.3-2.1-1"/></svg><span class="label">Recovery</span></button>
+    <button class="navitem" data-view="items" aria-label="Tolls &amp; violations" title="Tolls &amp; violations"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg><span class="label">Tolls &amp; violations</span></button>
+    <button class="navitem" data-view="trips" aria-label="Trips" title="Trips"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 10.5h12.4M3.2 10.5V8.2l1.3-3h7l1.3 3v2.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg><span class="label">Trips</span></button>
+    <div class="group">Account</div>
+    <button class="navitem" data-view="billing" aria-label="Billing (coming soon)" title="Billing (coming soon)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5"/><path d="M1.5 7h13"/></svg><span class="label">Billing</span><span class="tag">Soon</span></button>
+    <button class="navitem" data-view="diagnostics" aria-label="Diagnostics" title="Diagnostics"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4"/></svg><span class="label">Diagnostics</span></button>
+  </nav>
+  <div id="scrim" class="scrim hidden"></div>
 
-  <section id="tripSection" class="hidden">
-    <h2>4. Trips <span class="muted" id="tripCount"></span></h2>
-    <div class="scroll"><table id="tripTable"></table></div>
-  </section>
-
-  <div id="tripModal" class="backdrop hidden">
-    <div class="modal">
-      <div class="row" style="justify-content:space-between; align-items:flex-start">
-        <div id="modalHead"></div>
-        <div class="row">
-          <button id="modalPng" class="secondary">View evidence</button>
-          <button id="modalCsv" class="secondary">Download CSV</button>
-          <button id="modalClose" class="secondary">Close</button>
+  <main class="content">
+    <!-- ============ Dashboard ============ -->
+    <div class="view" data-view="dashboard">
+      <div class="pagehead">
+        <div>
+          <h1>Expense resolution</h1>
+          <p>Upload a tolls/violations statement and your trip export — charges are matched to the guest who had the vehicle.</p>
         </div>
       </div>
+
+      <section class="panel">
+        <header><span class="step">1</span><h2>Upload documents</h2></header>
+        <div class="body">
+          <div class="grid">
+            <div class="drop">
+              <label for="tollFiles">Toll bill / violation notice — PDF, PNG, JPG, CSV</label>
+              <input id="tollFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.csv,.txt" />
+              <p class="muted" id="tollFilesNote" style="margin:6px 0 0"></p>
+            </div>
+            <div class="drop">
+              <label for="tripFile">Trip earnings export — CSV or XLSX</label>
+              <input id="tripFile" type="file" accept=".csv,.xlsx,.xls" />
+              <p class="muted" id="tripCacheNote" style="margin:6px 0 0"></p>
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <label for="excludeList">Excluded transaction keywords</label>
+            <textarea id="excludeList" rows="3" placeholder="SUPPORT SERVICES, SYSTEM&#10;REBILL TAG STORE"></textarea>
+            <p class="muted" style="margin:6px 0 0">Transactions containing these words are excluded from charge calculations (one phrase per line, case-insensitive). Tag-store rebills, card auto-charges and "SUPPORT SERVICES, SYSTEM" are always excluded.</p>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button id="parseBtn" class="btn">Process documents</button>
+            <span id="parseStatus" class="muted" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="summaryPanel">
+        <header><span class="step">2</span><h2>Summary</h2></header>
+        <div class="body"><div class="cards" id="cards"></div></div>
+      </section>
+    </div>
+
+    <!-- ============ Recovery / what to charge ============ -->
+    <div class="view hidden" data-view="charge">
+      <div class="pagehead">
+        <div>
+          <h1>Recovery</h1>
+          <p>Charges that fit more than one trip go in full to the best-ranked trip. Unmatched charges fall outside every trip's dates and are charged to nobody.</p>
+        </div>
+      </div>
+
+      <div class="cards" id="cards2" style="margin-bottom:14px"></div>
+
+      <div class="toolbar" role="search">
+        <div class="field narrow"><label for="fFrom">From date</label><input id="fFrom" type="date" /></div>
+        <div class="field narrow"><label for="fTo">To date</label><input id="fTo" type="date" /></div>
+        <div class="field"><label for="fVehicle">Vehicle</label><select id="fVehicle"></select></div>
+        <div class="field"><label for="fPlate">Plate</label><select id="fPlate"></select></div>
+        <div class="field"><label for="fTrip">Trip #</label><input id="fTrip" type="text" placeholder="e.g. 58691937" /></div>
+        <label class="check" for="fSettled" style="margin:0"><input id="fSettled" type="checkbox" checked /> Hide trips already settled</label>
+        <button id="clearFilters" class="btn secondary">Clear filters</button>
+      </div>
+
+      <section class="panel">
+        <header>
+          <h2>Amount identified for recovery</h2>
+          <span class="muted" id="filterNote"></span>
+          <span class="muted" id="resolvedNote"></span>
+          <span style="flex:1"></span>
+          <button id="exportBtn" class="btn secondary">Download CSV</button>
+        </header>
+        <div class="tablewrap"><table id="chargeTable"></table></div>
+      </section>
+
+      <section class="panel">
+        <header>
+          <h2>Line-item detail</h2>
+          <span style="flex:1"></span>
+          <span class="muted" id="detailNote"></span>
+        </header>
+        <div class="body" style="padding-bottom:0">
+          <div class="toolbar">
+            <div class="field"><label for="dPlate">Plate</label><select id="dPlate"></select></div>
+            <div class="field">
+              <label for="dStatus">Status</label>
+              <select id="dStatus">
+                <option value="">All</option>
+                <option value="matched">Matched</option>
+                <option value="unmatched">Unmatched</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="tablewrap"><table id="detailTable"></table></div>
+      </section>
+    </div>
+
+    <!-- ============ Tolls & violations read from the bill ============ -->
+    <div class="view hidden" data-view="items">
+      <div class="pagehead">
+        <div>
+          <h1>Tolls &amp; violations <span class="muted" id="tollCount"></span></h1>
+          <p>Edit anything the OCR got wrong — matching updates instantly.</p>
+        </div>
+      </div>
+      <section class="panel">
+        <div class="tablewrap" style="border-top:0"><table id="tollTable"></table></div>
+      </section>
+    </div>
+
+    <!-- ============ Trips ============ -->
+    <div class="view hidden" data-view="trips">
+      <div class="pagehead">
+        <div>
+          <h1>Trips <span class="muted" id="tripCount"></span></h1>
+          <p>Amounts the marketplace already charged the guest are subtracted from what is still recoverable.</p>
+        </div>
+      </div>
+      <section class="panel">
+        <div class="tablewrap" style="border-top:0"><table id="tripTable"></table></div>
+      </section>
+    </div>
+
+    <!-- ============ Billing placeholder ============ -->
+    <div class="view hidden" data-view="billing">
+      <div class="pagehead"><div><h1>Billing</h1><p>Subscription management is not available yet.</p></div></div>
+      <section class="panel"><div class="body"><p class="muted" style="margin:0">Nothing to pay for today — FleetReclaim runs entirely on your own machine. This page is a placeholder for a future plan and invoice view.</p></div></section>
+    </div>
+
+    <!-- ============ Diagnostics ============ -->
+    <div class="view hidden" data-view="diagnostics">
+      <div class="pagehead"><div><h1>Diagnostics</h1><p>Raw text extracted from the uploaded documents.</p></div></div>
+      <section class="panel"><div class="body"><pre id="rawText">Nothing processed yet.</pre></div></section>
+    </div>
+  </main>
+</div>
+
+<div id="tripModal" class="backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <header>
+      <div id="modalHead"></div>
+      <div class="row">
+        <button id="modalPng" class="btn">View evidence</button>
+        <button id="modalCsv" class="btn secondary">Download CSV</button>
+        <button id="modalClose" class="btn secondary">Close</button>
+      </div>
+    </header>
+    <div class="body">
       <div class="cards" id="modalCards"></div>
-      <table id="modalTable"></table>
+      <div style="overflow:auto"><table id="modalTable"></table></div>
     </div>
   </div>
+</div>
 
-  <div id="pngModal" class="backdrop hidden">
-    <div class="modal">
-      <div class="row" style="justify-content:space-between; align-items:flex-start">
-        <div id="pngHead"></div>
-        <div class="row">
-          <button id="pngDownload" class="secondary">Download PNG</button>
-          <button id="pngClose" class="secondary">Close</button>
-        </div>
+<div id="pngModal" class="backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="pngTitle">
+  <div class="modal">
+    <header>
+      <div id="pngHead"></div>
+      <div class="row">
+        <button id="pngDownload" class="btn">Download evidence</button>
+        <button id="pngClose" class="btn secondary">Close</button>
       </div>
-      <div id="pngBody" class="bill"></div>
-    </div>
+    </header>
+    <div class="body"><div id="pngBody" class="evidence"></div></div>
   </div>
+</div>
 
-  <section id="rawSection" class="hidden">
-    <details><summary>Raw extracted text (debug)</summary><pre id="rawText"></pre></details>
-  </section>
-</main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script type="module">
 import { authFetch, onAuth, requireAuth, signOut } from '/auth.js';
 
 // One place the rest of the page gets an authenticated fetch from.
 window.authFetch = authFetch;
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
 onAuth(state => {
   // Never flash protected content while Firebase is still deciding.
@@ -184,10 +415,33 @@ onAuth(state => {
   if (state.error) document.getElementById('authGate').textContent = state.error;
   if (!state.user) return;
   const { displayName, email, photoURL } = state.user;
-  menu.innerHTML =
-    (photoURL ? `<img src="${photoURL}" alt="" referrerpolicy="no-referrer" />` : '') +
-    `<div class="who">${displayName || email}<span>${email}</span></div>` +
-    '<button id="signOut" class="secondary">Sign out</button>';
+  const label = displayName || email || 'Account';
+  menu.innerHTML = `
+    <button class="usertrigger" id="userTrigger" aria-haspopup="menu" aria-expanded="false">
+      ${photoURL
+        ? `<img src="${esc(photoURL)}" alt="" referrerpolicy="no-referrer" />`
+        : `<span class="avatar" aria-hidden="true">${esc(label.slice(0, 1).toUpperCase())}</span>`}
+      <span class="name">${esc(label)}</span>
+    </button>
+    <div class="menu hidden" id="userDropdown" role="menu">
+      <div class="who"><b>${esc(displayName || label)}</b><span class="muted">${esc(email || '')}</span></div>
+      <button role="menuitem" data-view="billing">Billing</button>
+      <button role="menuitem" id="signOut">Sign out</button>
+    </div>`;
+  const trigger = document.getElementById('userTrigger');
+  const dropdown = document.getElementById('userDropdown');
+  const setOpen = open => {
+    dropdown.classList.toggle('hidden', !open);
+    trigger.setAttribute('aria-expanded', String(open));
+  };
+  trigger.onclick = e => { e.stopPropagation(); setOpen(dropdown.classList.contains('hidden')); };
+  document.addEventListener('click', () => setOpen(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setOpen(false); });
+  dropdown.onclick = e => {
+    const view = e.target.dataset && e.target.dataset.view;
+    if (view) window.showView(view);
+    setOpen(false);
+  };
   document.getElementById('signOut').onclick = () => signOut();
 });
 
@@ -198,12 +452,66 @@ let tolls = [], trips = [], lastResult = null, parseId = '';
 const resolvedTrips = new Set();   // rows the user ticked off; view-only
 const $ = id => document.getElementById(id);
 const money = n => '$' + Number(n || 0).toFixed(2);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+/* ---------------- shell: navigation, toasts ---------------- */
+const mobile = () => window.matchMedia('(max-width: 900px)').matches;
+
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('hidden', v.dataset.view !== name));
+  document.querySelectorAll('.navitem').forEach(b => {
+    if (b.dataset.view === name) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+  if (mobile()) closeDrawer();
+  window.scrollTo(0, 0);
+}
+window.showView = showView;
+document.querySelectorAll('.navitem').forEach(b => b.onclick = () => showView(b.dataset.view));
+
+const closeDrawer = () => {
+  document.body.classList.remove('nav-open');
+  $('scrim').classList.add('hidden');
+  if (mobile()) $('navToggle').setAttribute('aria-expanded', 'false');
+};
+$('navToggle').onclick = () => {
+  if (mobile()) {
+    const open = !document.body.classList.contains('nav-open');
+    document.body.classList.toggle('nav-open', open);
+    $('scrim').classList.toggle('hidden', !open);
+    $('navToggle').setAttribute('aria-expanded', String(open));
+  } else {
+    const collapsed = document.body.classList.toggle('nav-collapsed');
+    $('navToggle').setAttribute('aria-expanded', String(!collapsed));
+  }
+};
+$('scrim').onclick = closeDrawer;
+function syncNavToggle() {
+  const expanded = mobile()
+    ? document.body.classList.contains('nav-open')
+    : !document.body.classList.contains('nav-collapsed');
+  $('navToggle').setAttribute('aria-expanded', String(expanded));
+}
+window.addEventListener('resize', () => {
+  if (!mobile()) closeDrawer();
+  syncNavToggle();
+});
+syncNavToggle();
+
+function toast(message, kind) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind === 'error' ? ' error' : '');
+  el.textContent = message;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4500);
+}
 
 // Matching defaults: 2h either side of the trip, no markup, no admin fee.
 function settings() {
   return { buffer_hours: 2, markup_pct: 0, fee_per_toll: 0 };
 }
 
+/* ---------------- trip export cache ---------------- */
 // The trip export rarely changes while resolving a bill, so keep it for the
 // browser session (sessionStorage clears itself when the browser closes).
 const TRIP_CACHE = 'tripExportFile';
@@ -222,8 +530,8 @@ function renderTripCache() {
   if (!cachedTrip) { $('tripCacheNote').textContent = ''; return; }
   const added = new Date(cachedTrip.added).toLocaleString();
   $('tripCacheNote').innerHTML =
-    `Using <b>${cachedTrip.name}</b> · added ${added} · ` +
-    '<button type="button" class="toll-link" id="tripRefresh">upload a new file</button>';
+    `Using <b>${esc(cachedTrip.name)}</b> · added ${esc(added)} · ` +
+    '<button type="button" class="linkbtn" id="tripRefresh">upload a new file</button>';
   $('tripRefresh').onclick = () => {
     cachedTrip = null;
     sessionStorage.removeItem(TRIP_CACHE);
@@ -252,9 +560,25 @@ $('tripFile').onchange = () => {
 
 renderTripCache();
 
+$('tollFiles').onchange = () => {
+  const names = [...$('tollFiles').files].map(f => f.name);
+  $('tollFilesNote').textContent = names.length ? `Selected: ${names.join(', ')}` : '';
+};
+
+/* ---------------- processing ---------------- */
+function processing(text) {
+  $('parseStatus').innerHTML = text
+    ? `<span class="processing"><span class="spinner" aria-hidden="true"></span>${esc(text)}</span>`
+    : '';
+}
+
 $('parseBtn').onclick = async () => {
   const tollFiles = $('tollFiles').files, tripFile = $('tripFile').files[0] || cachedTripFile();
-  if (!tollFiles.length || !tripFile) { $('parseStatus').textContent = 'Pick both a tolls/tickets bill and a trip export.'; return; }
+  if (!tollFiles.length || !tripFile) {
+    $('parseStatus').textContent = 'Pick both a tolls/violations statement and a trip export.';
+    toast('Pick both a statement and a trip export.', 'error');
+    return;
+  }
   const form = new FormData();
   [...tollFiles].forEach(f => form.append('toll_files', f));
   form.append('trip_file', tripFile);
@@ -262,7 +586,7 @@ $('parseBtn').onclick = async () => {
   form.append('exclude', exclude);
   localStorage.setItem('tollExclusions', exclude);
   $('parseBtn').disabled = true;
-  $('parseStatus').textContent = 'Reading files (OCR can take a few seconds)…';
+  processing('Reading documents and extracting transactions (OCR can take a few seconds)…');
   try {
     const res = await window.authFetch('/api/parse', { method: 'POST', body: form });
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
@@ -271,12 +595,17 @@ $('parseBtn').onclick = async () => {
     tolls = data.tolls.map(t => ({ ...t, ignored: false }));
     trips = data.trips;
     resolvedTrips.clear();
-    $('parseStatus').textContent = `${tolls.length} bill line items, ${trips.length} trips.`;
+    $('parseStatus').textContent = `${tolls.length} transactions, ${trips.length} trips.`;
     $('rawText').textContent = Object.entries(data.raw_text).map(([k, v]) => `--- ${k} ---\n${v}`).join('\n\n');
-    ['tollSection','tripSection','resultSection','rawSection'].forEach(id => $(id).classList.remove('hidden'));
-    renderTolls(); renderTrips(); populateFilters(); await runMatch();
+    renderTolls(); renderTrips(); populateFilters();
+    processing('Matching vehicles and trip dates…');
+    await runMatch();
+    $('parseStatus').textContent = `${tolls.length} transactions, ${trips.length} trips.`;
+    toast('Processing complete.');
+    showView('charge');
   } catch (e) {
     $('parseStatus').textContent = 'Error: ' + e.message;
+    toast('Processing failed: ' + e.message, 'error');
   } finally { $('parseBtn').disabled = false; }
 };
 
@@ -284,16 +613,16 @@ $('excludeList').value = localStorage.getItem('tollExclusions') || '';
 
 function renderTolls() {
   $('tollCount').textContent = `(${tolls.length})`;
-  const head = '<tr><th>Use</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th></tr>';
-  $('tollTable').innerHTML = head + tolls.map((t, i) => `
+  const head = '<thead><tr><th>Use</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th class="num">Amount</th></tr></thead>';
+  $('tollTable').innerHTML = head + '<tbody>' + tolls.map((t, i) => `
     <tr>
-      <td><input type="checkbox" data-i="${i}" data-f="ignored" ${t.ignored ? '' : 'checked'} /></td>
-      <td><input type="text" data-i="${i}" data-f="date" value="${t.date}" size="10" /></td>
-      <td><input type="text" data-i="${i}" data-f="time" value="${t.time || ''}" size="5" /></td>
-      <td><input type="text" data-i="${i}" data-f="plate" value="${t.plate || ''}" size="8" /></td>
-      <td><input type="text" data-i="${i}" data-f="location" value="${(t.location || '').replace(/"/g, '&quot;')}" /></td>
-      <td><input type="number" step="0.01" data-i="${i}" data-f="amount" value="${t.amount}" size="6" /></td>
-    </tr>`).join('');
+      <td><input type="checkbox" aria-label="Include this transaction" data-i="${i}" data-f="ignored" ${t.ignored ? '' : 'checked'} /></td>
+      <td><input type="text" aria-label="Date" data-i="${i}" data-f="date" value="${esc(t.date)}" size="10" /></td>
+      <td><input type="text" aria-label="Time" data-i="${i}" data-f="time" value="${esc(t.time || '')}" size="5" /></td>
+      <td><input type="text" aria-label="Plate" data-i="${i}" data-f="plate" value="${esc(t.plate || '')}" size="8" /></td>
+      <td class="wrap"><input type="text" aria-label="Location" data-i="${i}" data-f="location" value="${esc(t.location || '')}" /></td>
+      <td class="num"><input type="number" aria-label="Amount" step="0.01" data-i="${i}" data-f="amount" value="${t.amount}" size="6" /></td>
+    </tr>`).join('') + '</tbody>';
   $('tollTable').oninput = e => {
     const { i, f } = e.target.dataset;
     if (i === undefined) return;
@@ -304,14 +633,14 @@ function renderTolls() {
 
 function renderTrips() {
   $('tripCount').textContent = `(${trips.length})`;
-  const head = '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th><th>Tolls &amp; tickets already charged</th></tr>';
-  $('tripTable').innerHTML = head + trips.map((t, i) => `
+  const head = '<thead><tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th><th class="num">Already charged</th></tr></thead>';
+  $('tripTable').innerHTML = head + '<tbody>' + trips.map((t, i) => `
     <tr>
-      <td>${t.trip_id}</td><td>${t.guest}</td><td>${t.vehicle}</td>
-      <td><input type="text" data-i="${i}" data-f="plate" value="${t.plate || ''}" size="8" /></td>
-      <td>${t.start}</td><td>${t.end}</td>
-      <td><input type="number" step="0.01" data-i="${i}" data-f="already_charged" value="${t.already_charged || 0}" size="6" /></td>
-    </tr>`).join('');
+      <td>${esc(t.trip_id)}</td><td>${esc(t.guest)}</td><td>${esc(t.vehicle)}</td>
+      <td><input type="text" aria-label="Plate" data-i="${i}" data-f="plate" value="${esc(t.plate || '')}" size="8" /></td>
+      <td>${esc(t.start)}</td><td>${esc(t.end)}</td>
+      <td class="num"><input type="number" aria-label="Already charged" step="0.01" data-i="${i}" data-f="already_charged" value="${t.already_charged || 0}" size="6" /></td>
+    </tr>`).join('') + '</tbody>';
   $('tripTable').oninput = e => {
     const { i, f } = e.target.dataset;
     if (i === undefined) return;
@@ -334,7 +663,7 @@ async function runMatch() {
 function populateFilters() {
   const fill = (el, values) => {
     const current = el.value;
-    el.innerHTML = '<option value="">All</option>' + values.map(v => `<option>${v}</option>`).join('');
+    el.innerHTML = '<option value="">All</option>' + values.map(v => `<option>${esc(v)}</option>`).join('');
     el.value = values.includes(current) ? current : '';
   };
   fill($('fVehicle'), [...new Set(trips.map(t => t.vehicle).filter(Boolean))].sort());
@@ -442,7 +771,7 @@ async function tripPng(trip, rows) {
     .sort((a, b) => a.page - b.page || a.box[1] - b.box[1])
     .map(row => ({ source: row.source, page: row.page, box: row.box }));
   if (!items.length) {
-    alert('No image rows for this trip — the bill was a CSV/text file, or these rows came from a table without positions.');
+    toast('No image rows for this trip — the statement was a CSV/text file, or these rows came from a table without positions.', 'error');
     return null;
   }
   const res = await window.authFetch('/api/crop', {
@@ -450,7 +779,7 @@ async function tripPng(trip, rows) {
     body: JSON.stringify({ parse_id: parseId, items }),
   });
   if (!res.ok) {
-    alert((await res.json().catch(() => ({}))).detail || 'Could not build the image.');
+    toast((await res.json().catch(() => ({}))).detail || 'Could not build the evidence image.', 'error');
     return null;
   }
   return res.blob();
@@ -464,11 +793,15 @@ async function openPngModal(trip, rows) {
   if (!blob) return;
   if (pngUrl) URL.revokeObjectURL(pngUrl);
   pngUrl = URL.createObjectURL(blob);
-  $('pngHead').innerHTML = `<h3>Evidence — trip ${trip.trip_id}</h3>` +
-    `<div class="muted">${trip.guest} · ${money(trip.toll_total)} in tolls/tickets</div>`;
-  $('pngBody').innerHTML = `<img src="${pngUrl}" alt="evidence for trip ${trip.trip_id}" />`;
+  const items = tollsOf(trip.trip_id, rows);
+  $('pngHead').innerHTML =
+    `<h3 id="pngTitle">Toll evidence — trip ${esc(trip.trip_id)}</h3>` +
+    `<div class="muted">${esc(trip.guest)} · ${esc(trip.vehicle || '')} ${esc(trip.plate || '')} · ` +
+    `${items.length} transaction${items.length === 1 ? '' : 's'} · total ${money(trip.toll_total)}</div>`;
+  $('pngBody').innerHTML = `<img src="${pngUrl}" alt="Cropped statement rows for trip ${esc(trip.trip_id)}" />`;
   $('pngDownload').onclick = () => downloadBlob(`tolls-${trip.trip_id}.png`, blob);
-  $('pngModal').classList.remove('hidden');
+  openModal('pngModal');
+  $('pngClose').focus();
 }
 
 const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -492,66 +825,98 @@ function tripCsv(trip, rows) {
 function openTripModal(trip, rows) {
   const items = tollsOf(trip.trip_id, rows);
   $('modalHead').innerHTML = `
-    <h3>${trip.guest} — trip ${trip.trip_id}</h3>
-    <div class="muted">${trip.vehicle} · ${trip.plate || 'no plate'} ·
-      ${String(trip.start).replace('T',' ')} → ${String(trip.end).replace('T',' ')}</div>`;
+    <h3 id="modalTitle">Toll evidence — trip ${esc(trip.trip_id)}</h3>
+    <div class="muted">${esc(trip.guest)} · ${esc(trip.vehicle)} · ${esc(trip.plate || 'no plate')} ·
+      ${esc(String(trip.start).replace('T',' '))} → ${esc(String(trip.end).replace('T',' '))}</div>`;
   $('modalCards').innerHTML = `
-    <div class="card"><span class="muted">Line items</span><b>${items.length}</b></div>
-    <div class="card"><span class="muted">Tolls/tickets total</span><b>${money(trip.toll_total)}</b></div>
-    <div class="card"><span class="muted">Already charged</span><b>${money(trip.already_charged)}</b></div>
-    <div class="card"><span class="muted">Charge guest</span><b>${money(trip.charge_total)}</b></div>`;
+    <div class="card"><span>Transactions</span><b>${items.length}</b></div>
+    <div class="card"><span>Statement total</span><b>${money(trip.toll_total)}</b></div>
+    <div class="card"><span>Already charged</span><b>${money(trip.already_charged)}</b></div>
+    <div class="card primary"><span>Charge guest</span><b>${money(trip.charge_total)}</b></div>`;
   $('modalTable').innerHTML =
-    '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Charge</th></tr>' +
-    items.map(row => `<tr><td><span class="pill ${row.status}">${row.status}</span></td>
-      <td class="muted">${row.basis || '—'}</td><td>${row.date}</td><td>${row.time || ''}</td>
-      <td>${row.plate || ''}</td><td>${row.location || ''}</td>
-      <td>${money(row.amount)}</td><td>${money(row.charge)}</td></tr>`).join('');
+    '<thead><tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th class="num">Amount</th><th class="num">Charge</th></tr></thead><tbody>' +
+    items.map(row => `<tr><td><span class="badge ${esc(row.status)}">${esc(row.status)}</span></td>
+      <td class="muted">${esc(row.basis || '—')}</td><td>${esc(row.date)}</td><td>${esc(row.time || '')}</td>
+      <td>${esc(row.plate || '')}</td><td class="trunc" title="${esc(row.location || '')}">${esc(row.location || '')}</td>
+      <td class="num">${money(row.amount)}</td><td class="num">${money(row.charge)}</td></tr>`).join('') + '</tbody>';
   $('modalCsv').onclick = () => tripCsv(trip, rows);
   $('modalPng').onclick = () => openPngModal(trip, rows);
-  $('tripModal').classList.remove('hidden');
+  openModal('tripModal');
+  $('modalClose').focus();
 }
 
-const closePng = () => $('pngModal').classList.add('hidden');
+const modalOpeners = {};
+function openModal(id) {
+  modalOpeners[id] = document.activeElement;
+  $(id).classList.remove('hidden');
+}
+function hideModal(id) {
+  $(id).classList.add('hidden');
+  const opener = modalOpeners[id];
+  modalOpeners[id] = null;
+  if (opener && document.body.contains(opener)) opener.focus();
+}
+const closePng = () => hideModal('pngModal');
 // Esc closes the image preview first, so the trip modal behind it stays open.
 const closeModal = () =>
-  $('pngModal').classList.contains('hidden')
-    ? $('tripModal').classList.add('hidden')
-    : closePng();
-$('modalClose').onclick = () => $('tripModal').classList.add('hidden');
+  $('pngModal').classList.contains('hidden') ? hideModal('tripModal') : closePng();
+$('modalClose').onclick = () => hideModal('tripModal');
 $('pngClose').onclick = closePng;
 $('tripModal').onclick = e => { if (e.target.id === 'tripModal') closeModal(); };
 $('pngModal').onclick = e => { if (e.target.id === 'pngModal') closePng(); };
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+const topModal = () =>
+  [$('pngModal'), $('tripModal')].find(m => !m.classList.contains('hidden')) || null;
+document.addEventListener('keydown', e => {
+  const open = topModal();
+  if (e.key === 'Escape') {
+    if (open) closeModal();
+    else if (document.body.classList.contains('nav-open')) closeDrawer();
+    return;
+  }
+  if (e.key !== 'Tab' || !open) return;
+  const focusable = [...open.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.offsetParent !== null);
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  else if (!open.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+});
 
 function renderResult(r) {
   const s = r.summary;
-  $('cards').innerHTML = `
-    <div class="card"><span class="muted">Line items</span><b>${s.toll_count}</b></div>
-    <div class="card"><span class="muted">Matched</span><b>${s.matched}</b></div>
-    <div class="card"><span class="muted">Unmatched</span><b>${s.unmatched}</b></div>
-    <div class="card"><span class="muted">Tolls/tickets total</span><b>${money(s.toll_total)}</b></div>
-    <div class="card"><span class="muted">Recoverable amount</span><b>${money(s.charge_total)}</b></div>`;
+  const cards = `
+    <div class="card"><span>Transactions</span><b>${s.toll_count}</b></div>
+    <div class="card"><span>Matched</span><b>${s.matched}</b></div>
+    <div class="card"><span>Unmatched</span><b>${s.unmatched}</b></div>
+    <div class="card"><span>Statement total</span><b>${money(s.toll_total)}</b></div>
+    <div class="card primary"><span>Recoverable amount</span><b>${money(s.charge_total)}</b></div>`;
+  $('cards').innerHTML = cards;
+  $('cards2').innerHTML = cards;
 
   // Resolving a row only tidies the view; totals and the CSV keep every trip.
   const shown = r.trips.filter(t => !resolvedTrips.has(String(t.trip_id)));
   const resolvedHere = r.trips.length - shown.length;
   $('resolvedNote').innerHTML = resolvedHere
-    ? `${resolvedHere} resolved · <button type="button" class="toll-link" id="showAll">show all</button>`
+    ? `${resolvedHere} resolved · <button type="button" class="linkbtn" id="showAll">show all</button>`
     : '';
   if (resolvedHere) $('showAll').onclick = () => { resolvedTrips.clear(); renderResult(filtered()); };
 
   $('chargeTable').innerHTML =
-    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Items</th><th>Tolls/tickets total</th><th>Already charged</th><th>Charge guest</th><th>Resolve</th></tr>' +
+    '<thead><tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th class="num">Items</th><th class="num">Statement total</th><th class="num">Already charged</th><th class="num">Charge guest</th><th>Evidence</th><th>Resolve</th></tr></thead><tbody>' +
     (shown.length ? shown.map(t => `
-      <tr><td>${t.trip_id}</td>
-      <td>${t.guest}${t.toll_count ? ` <button type="button" class="toll-link" data-png="${t.trip_id}" title="View bill evidence">\u{1F9FE}</button>` : ''}</td>
-      <td>${t.vehicle}</td><td>${t.plate}</td>
-      <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
-      <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
-      <td>${money(t.toll_total)}</td><td class="muted">${money(t.already_charged)}</td>
-      <td><b>${money(t.charge_total)}</b></td>
-      <td>${t.toll_count ? `<button type="button" class="toll-link" data-resolve="${t.trip_id}" title="Mark this trip resolved and take it off the list">resolve</button>` : ''}</td></tr>`).join('')
-      : '<tr><td colspan="10" class="muted">No matches yet.</td></tr>');
+      <tr><td>${esc(t.trip_id)}</td>
+      <td class="trunc" title="${esc(t.guest)}">${esc(t.guest)}</td>
+      <td class="trunc" title="${esc(t.vehicle)}">${esc(t.vehicle)}</td><td>${esc(t.plate)}</td>
+      <td>${esc(t.start.replace('T',' '))} → ${esc(t.end.replace('T',' '))}</td>
+      <td class="num"><button type="button" class="linkbtn" data-trip="${esc(t.trip_id)}">${t.toll_count}</button></td>
+      <td class="num">${money(t.toll_total)}</td><td class="num muted">${money(t.already_charged)}</td>
+      <td class="num"><b>${money(t.charge_total)}</b></td>
+      <td>${t.toll_count ? `<button type="button" class="linkbtn" data-png="${esc(t.trip_id)}">View evidence</button>` : ''}</td>
+      <td>${t.toll_count ? `<button type="button" class="linkbtn" data-resolve="${esc(t.trip_id)}" title="Mark this trip resolved and take it off the list">resolve</button>` : ''}</td></tr>`).join('')
+      : '<tr><td colspan="11" class="empty">No matches yet — upload a statement and a trip export on the Dashboard.</td></tr>') +
+    '</tbody>';
 
   $('chargeTable').onclick = e => {
     const { trip: openId, png: pngId, resolve: doneId } = e.target.dataset;
@@ -569,18 +934,22 @@ function renderResult(r) {
   $('detailNote').innerHTML =
     `<b>${detailRows.length}</b> item${detailRows.length === 1 ? '' : 's'}` +
     ((dPlate || dStatus) ? ` of ${r.rows.length}` : '') +
-    ` · bill total <b>${money(detailSum('amount'))}</b> · charged <b>${money(detailSum('charge'))}</b>`;
+    ` · statement total <b>${money(detailSum('amount'))}</b> · charged <b>${money(detailSum('charge'))}</b>`;
 
   $('detailTable').innerHTML =
-    '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Trip</th><th>Guest</th><th>Charge</th></tr>' +
-    detailRows.map(row => `
-      <tr><td><span class="pill ${row.status}">${row.status}</span></td>
-      <td class="muted">${row.basis || '—'}</td>
-      <td>${row.date}</td><td>${row.time || ''}</td><td>${row.plate || ''}</td>
-      <td>${row.location || ''}</td><td>${money(row.amount)}</td>
-      <td>${row.trip ? row.trip.trip_id : '—'}${row.alternatives && row.alternatives.length ? ' <span class="muted">+' + row.alternatives.length + ' other</span>' : ''}</td>
-      <td>${row.trip ? row.trip.guest : ''}</td><td>${money(row.charge)}</td></tr>`).join('');
+    '<thead><tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th class="num">Amount</th><th>Trip</th><th>Guest</th><th class="num">Charge</th></tr></thead><tbody>' +
+    (detailRows.length ? detailRows.map(row => `
+      <tr><td><span class="badge ${esc(row.status)}">${esc(row.status)}</span></td>
+      <td class="muted">${esc(row.basis || '—')}</td>
+      <td>${esc(row.date)}</td><td>${esc(row.time || '')}</td><td>${esc(row.plate || '')}</td>
+      <td class="trunc" title="${esc(row.location || '')}">${esc(row.location || '')}</td><td class="num">${money(row.amount)}</td>
+      <td>${row.trip ? esc(row.trip.trip_id) : '—'}${row.alternatives && row.alternatives.length ? ' <span class="muted">+' + row.alternatives.length + ' other</span>' : ''}</td>
+      <td class="trunc" title="${row.trip ? esc(row.trip.guest) : ''}">${row.trip ? esc(row.trip.guest) : ''}</td><td class="num">${money(row.charge)}</td></tr>`).join('')
+      : '<tr><td colspan="10" class="empty">Nothing to show for these filters.</td></tr>') +
+    '</tbody>';
 }
+
+renderResult(filtered());
 
 // Export mirrors what is on screen, so filters apply to the CSV too.
 $('exportBtn').onclick = () => {
@@ -597,6 +966,7 @@ $('exportBtn').onclick = () => {
     ...r.trips.map(t => [t.trip_id, t.guest, t.vehicle, t.plate, t.start, t.end, t.toll_count, t.toll_total, t.already_charged || 0, t.charge_total].map(cell).join(',')),
   ];
   download('toll-charges.csv', lines.join('\n'));
+  toast('CSV download ready.');
 };
 </script>
 </body>
