@@ -7,11 +7,12 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 
+from .auth import AuthUser, auth_enabled, require_firebase_user, web_config
 from .matching import match
 from .parsers import parse_tolls, parse_trips
 
@@ -21,6 +22,7 @@ STATIC = Path(__file__).resolve().parent.parent / "static"
 # Rendered bill pages from recent uploads, so a trip's rows can be cropped out of
 # the original document. Keyed by parse id -> filename -> page images.
 PAGES: OrderedDict[str, dict[str, list[Image.Image]]] = OrderedDict()
+PAGE_OWNERS: dict[str, str] = {}
 PAGE_CACHE_SIZE = 5
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
@@ -46,10 +48,35 @@ class MatchRequest(BaseModel):
     fee_per_toll: float = 0.0
 
 
+def _page(name: str) -> FileResponse:
+    # The UI changes often; never let a browser serve a stale copy.
+    return FileResponse(STATIC / name, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/")
 def index() -> FileResponse:
-    # The UI changes often; never let a browser serve a stale copy.
-    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
+    return _page("index.html")
+
+
+@app.get("/login")
+def login() -> FileResponse:
+    return _page("login.html")
+
+
+@app.get("/auth.js")
+def auth_module() -> FileResponse:
+    return FileResponse(STATIC / "auth.js", media_type="text/javascript")
+
+
+@app.get("/api/config")
+def config() -> dict[str, Any]:
+    """Frontend-safe Firebase config. Admin credentials never leave the server."""
+    return {"auth_enabled": auth_enabled(), "firebase": web_config()}
+
+
+@app.get("/api/me")
+def me(user: AuthUser = Depends(require_firebase_user)) -> dict[str, str]:
+    return user.dict()
 
 
 @app.post("/api/parse")
@@ -57,6 +84,7 @@ async def parse(
     toll_files: list[UploadFile] = File(...),
     trip_file: UploadFile = File(...),
     exclude: str = Form(""),
+    user: AuthUser = Depends(require_firebase_user),
 ) -> dict[str, Any]:
     trips = parse_trips(trip_file.filename or "trips.csv", await trip_file.read())
     known_plates = {t.plate for t in trips if t.plate}
@@ -80,9 +108,12 @@ async def parse(
             row["parse_id"] = parse_id
             tolls.append(row)
 
+    # Parses are scoped to the Firebase uid, so one user cannot crop another's bill.
     PAGES[parse_id] = pages
+    PAGE_OWNERS[parse_id] = user.uid
     while len(PAGES) > PAGE_CACHE_SIZE:
-        PAGES.popitem(last=False)
+        dropped, _ = PAGES.popitem(last=False)
+        PAGE_OWNERS.pop(dropped, None)
 
     return {
         "parse_id": parse_id,
@@ -102,9 +133,11 @@ def _font(size: int) -> ImageFont.ImageFont:
 
 
 @app.post("/api/crop")
-def crop(request: CropRequest) -> Response:
+def crop(request: CropRequest, user: AuthUser = Depends(require_firebase_user)) -> Response:
     """Stack this trip's rows from the original bill into one screenshot-ready PNG."""
     pages = PAGES.get(request.parse_id)
+    if pages is not None and PAGE_OWNERS.get(request.parse_id) != user.uid:
+        raise HTTPException(status_code=404, detail="Re-run Parse files to rebuild bill images.")
     if pages is None:
         raise HTTPException(status_code=404, detail="Re-run Parse files to rebuild bill images.")
 
@@ -160,7 +193,9 @@ def crop(request: CropRequest) -> Response:
 
 
 @app.post("/api/match")
-def run_match(request: MatchRequest) -> dict[str, Any]:
+def run_match(
+    request: MatchRequest, user: AuthUser = Depends(require_firebase_user)
+) -> dict[str, Any]:
     return match(
         request.tolls,
         request.trips,
@@ -171,7 +206,9 @@ def run_match(request: MatchRequest) -> dict[str, Any]:
 
 
 @app.post("/api/export")
-def export(request: MatchRequest) -> StreamingResponse:
+def export(
+    request: MatchRequest, user: AuthUser = Depends(require_firebase_user)
+) -> StreamingResponse:
     result = match(
         request.tolls,
         request.trips,

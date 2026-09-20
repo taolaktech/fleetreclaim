@@ -44,14 +44,26 @@
   details summary { cursor:pointer; color:var(--muted); }
   pre { white-space:pre-wrap; background:#0d1017; padding:10px; border-radius:6px; max-height:300px; overflow:auto; font-size:12px; }
   .hidden { display:none; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+  .user { display:flex; align-items:center; gap:10px; }
+  .user img { width:32px; height:32px; border-radius:50%; }
+  .user .who { line-height:1.2; }
+  .user .who span { display:block; color:var(--muted); font-size:12px; }
+  #authGate { display:flex; align-items:center; justify-content:center; padding:80px 20px; color:var(--muted); }
 </style>
 </head>
 <body>
 <header>
-  <h1>Tolls/tickets ↔ trips matcher</h1>
-  <p>Upload a tolls/tickets bill (PDF/image) and your marketplace trip export. Charges are matched to trips by plate and timestamp.</p>
+  <div class="topbar">
+    <div>
+      <h1>Tolls/tickets ↔ trips matcher</h1>
+      <p>Upload a tolls/tickets bill (PDF/image) and your marketplace trip export. Charges are matched to trips by plate and timestamp.</p>
+    </div>
+    <div id="userMenu" class="user hidden"></div>
+  </div>
 </header>
-<main>
+<div id="authGate">Checking your sign-in…</div>
+<main id="app" class="hidden">
   <section>
     <h2>1. Files</h2>
     <div class="grid">
@@ -156,6 +168,31 @@
   </section>
 </main>
 
+<script type="module">
+import { authFetch, onAuth, requireAuth, signOut } from '/auth.js';
+
+// One place the rest of the page gets an authenticated fetch from.
+window.authFetch = authFetch;
+
+onAuth(state => {
+  // Never flash protected content while Firebase is still deciding.
+  document.getElementById('authGate').classList.toggle('hidden', !state.loading);
+  document.getElementById('app').classList.toggle('hidden', !state.isAuthenticated);
+  const menu = document.getElementById('userMenu');
+  menu.classList.toggle('hidden', !state.isAuthenticated);
+  if (state.loading) return;
+  if (state.error) document.getElementById('authGate').textContent = state.error;
+  if (!state.user) return;
+  const { displayName, email, photoURL } = state.user;
+  menu.innerHTML =
+    (photoURL ? `<img src="${photoURL}" alt="" referrerpolicy="no-referrer" />` : '') +
+    `<div class="who">${displayName || email}<span>${email}</span></div>` +
+    '<button id="signOut" class="secondary">Sign out</button>';
+  document.getElementById('signOut').onclick = () => signOut();
+});
+
+requireAuth();
+</script>
 <script>
 let tolls = [], trips = [], lastResult = null, parseId = '';
 const resolvedTrips = new Set();   // rows the user ticked off; view-only
@@ -227,7 +264,7 @@ $('parseBtn').onclick = async () => {
   $('parseBtn').disabled = true;
   $('parseStatus').textContent = 'Reading files (OCR can take a few seconds)…';
   try {
-    const res = await fetch('/api/parse', { method: 'POST', body: form });
+    const res = await window.authFetch('/api/parse', { method: 'POST', body: form });
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
     const data = await res.json();
     parseId = data.parse_id;
@@ -286,7 +323,7 @@ function renderTrips() {
 }
 
 async function runMatch() {
-  const res = await fetch('/api/match', {
+  const res = await window.authFetch('/api/match', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tolls, trips, ...settings() }),
   });
@@ -408,7 +445,7 @@ async function tripPng(trip, rows) {
     alert('No image rows for this trip — the bill was a CSV/text file, or these rows came from a table without positions.');
     return null;
   }
-  const res = await fetch('/api/crop', {
+  const res = await window.authFetch('/api/crop', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ parse_id: parseId, items }),
   });

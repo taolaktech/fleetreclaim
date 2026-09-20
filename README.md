@@ -57,9 +57,33 @@ python -m uvicorn app.main:app --port 8080
 # open http://localhost:8080
 ```
 
+## Authentication
+
+Sign-in is Firebase Authentication with Google only (personal and Workspace
+accounts alike) — no passwords, no user database. The Firebase uid is the
+permanent identity; anything persisted later would hang off `users/{uid}/…`.
+
+* Browser: `/login` → "Continue with Google" (popup, redirect when popups are
+  blocked). `static/auth.js` is the single Firebase client and the single auth
+  listener; the app is hidden behind a loading gate until the state is known.
+* Server: every `/api/*` route (except `/api/config`) depends on
+  `require_firebase_user`, which verifies the `Authorization: Bearer <ID token>`
+  with the Firebase Admin SDK. A uid sent by the browser is never trusted.
+
+Copy `.env.example` to `.env` and fill it in. The `FIREBASE_API_KEY`…`FIREBASE_APP_ID`
+values are web config and are served to the browser on purpose;
+`FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` are Admin credentials and stay
+on the server. In the Firebase console: enable Authentication → Google, set a
+support email, and add `localhost` plus the production host under Authorized
+domains.
+
+With no Firebase project configured, `DEV_AUTH_BYPASS=1` runs the app open for
+local development; it is ignored as soon as Admin credentials exist.
+
 ## Sample data / test
 
 ```bash
 python samples/make_samples.py   # writes a fake toll bill (PDF+PNG) and trips CSV
+DEV_AUTH_BYPASS=1 python -m uvicorn app.main:app --port 8080   # server under test
 python samples/smoke_test.py     # end-to-end check against a running server
 ```
