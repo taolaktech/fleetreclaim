@@ -33,6 +33,8 @@ def main() -> int:
         paid = page.locator("#chargeTable tr", has_text="R-1005").first.locator("td").all_inner_texts()
         print("R-1005 row:", paid)
         assert paid[6] == "0" and paid[8] == "$4.00" and paid[9] == "$0.00", paid
+        no_rows = page.locator("#chargeTable tr", has_text="R-1005").first
+        assert no_rows.locator("[data-png]").count() == 0  # nothing to show as evidence
 
         page.check("#fSettled")
         page.wait_for_timeout(300)

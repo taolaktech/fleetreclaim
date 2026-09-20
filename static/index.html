@@ -512,7 +512,7 @@ function renderResult(r) {
     (shown.length ? shown.map(t => `
       <tr><td><button type="button" class="toll-link" data-resolve="${t.trip_id}" title="Mark this trip resolved and take it off the list">resolve</button></td>
       <td>${t.trip_id}</td>
-      <td>${t.guest} <button type="button" class="toll-link" data-png="${t.trip_id}">bill</button></td>
+      <td>${t.guest}${t.toll_count ? ` <button type="button" class="toll-link" data-png="${t.trip_id}" title="View bill evidence">\u{1F9FE}</button>` : ''}</td>
       <td>${t.vehicle}</td><td>${t.plate}</td>
       <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
       <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
