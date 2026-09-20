@@ -7,6 +7,8 @@
  * and Firebase is never loaded.
  */
 
+import { initAnalytics, trackEvent } from '/analytics.js';
+
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.5';
 
 const state = {
@@ -67,6 +69,8 @@ async function init() {
     return snapshot();
   }
 
+  initAnalytics(config.ga_measurement_id || '');
+
   state.authEnabled = !!config.auth_enabled;
   if (!state.authEnabled) {
     state.user = { uid: 'dev-local', email: 'dev@example.com', displayName: 'Local dev', photoURL: '' };
@@ -92,18 +96,30 @@ async function init() {
 
   // A redirect sign-in finishes here; surface its failure like a popup failure.
   auth.getRedirectResult(firebaseAuth).catch(error => {
+    trackEvent('login_failed', { method: 'google', error_category: errorBucket((error && error.code) || '') });
     state.error = messageFor(error);
     notify();
   });
 
   return new Promise(resolve => {
     auth.onAuthStateChanged(firebaseAuth, user => {
+      const signedIn = !!user && !state.user;
       state.user = user ? profile(user) : null;
+      if (signedIn) trackEvent('login_success', { method: 'google' });
       state.loading = false;
       notify();
       resolve(snapshot());
     });
   });
+}
+
+/** Coarse bucket for a Firebase error code; the code itself is never sent. */
+function errorBucket(code) {
+  if (code === 'auth/network-request-failed') return 'network_error';
+  if (code === 'auth/popup-blocked' || code === 'auth/popup-closed-by-user') return 'popup_blocked';
+  if (code === 'auth/user-disabled') return 'account_disabled';
+  if (code === 'auth/unauthorized-domain' || code === 'auth/operation-not-allowed') return 'configuration_error';
+  return 'unknown';
 }
 
 /** Human-readable, non-sensitive text for a Firebase auth error. */
@@ -125,6 +141,7 @@ export async function signInWithGoogle() {
   if (!state.authEnabled) return snapshot();
   if (!firebaseAuth) throw new Error('Authentication is unavailable right now.');
 
+  trackEvent('login_started', { method: 'google' });
   const provider = new firebaseLib.GoogleAuthProvider();
   // Let people pick between personal and Workspace accounts every time.
   provider.setCustomParameters({ prompt: 'select_account' });
@@ -137,6 +154,7 @@ export async function signInWithGoogle() {
       await firebaseLib.signInWithRedirect(firebaseAuth, provider);
       return snapshot();
     }
+    trackEvent('login_failed', { method: 'google', error_category: errorBucket(code) });
     state.error = messageFor(error);
     notify();
     if (state.error) throw new Error(state.error);
@@ -146,6 +164,7 @@ export async function signInWithGoogle() {
 
 export async function signOut() {
   await authReady();
+  trackEvent('logout', {});
   if (firebaseAuth) await firebaseLib.signOut(firebaseAuth);
   state.user = null;
   notify();

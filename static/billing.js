@@ -6,6 +6,7 @@
  * token, and nothing here grants access to anything.
  */
 
+import { trackEvent } from '/analytics.js';
 import { authFetch } from '/auth.js';
 
 const state = { loading: true, error: '', data: null };
@@ -83,22 +84,29 @@ async function post(url, body) {
 
 /** Start Stripe Checkout for a plan key (never a price id). */
 export async function subscribe(plan) {
+  // Leaving for Checkout is an intent, never a subscription: only Stripe's
+  // confirmed status counts, and that is reported from the success page.
+  trackEvent('billing_period_selected', { billing_period: plan === 'yearly' ? 'annual' : 'monthly' });
+  trackEvent('checkout_started', { billing_period: plan === 'yearly' ? 'annual' : 'monthly' });
   const { url } = await post('/api/billing/checkout', { plan });
   window.location.assign(url);
 }
 
 export async function openPortal() {
+  trackEvent('billing_portal_opened', {});
   const { url } = await post('/api/billing/portal');
   window.location.assign(url);
 }
 
 export async function cancel() {
+  trackEvent('subscription_cancel_requested', {});
   state.data = await post('/api/billing/cancel');
   notify();
   return snapshot();
 }
 
 export async function resume() {
+  trackEvent('subscription_resumed', {});
   state.data = await post('/api/billing/resume');
   notify();
   return snapshot();

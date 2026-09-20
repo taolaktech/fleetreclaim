@@ -422,11 +422,16 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script type="module">
+import { errorCategory, fileType, trackEvent } from '/analytics.js';
 import { authFetch, onAuth, requireAuth, signOut } from '/auth.js';
 import { cancel, formatDate, onBilling, openPortal, refresh, resume, subscribe } from '/billing.js';
 
 // One place the rest of the page gets an authenticated fetch from.
 window.authFetch = authFetch;
+// The main app script is a classic script, so analytics reaches it here.
+window.trackEvent = trackEvent;
+window.analyticsErrorCategory = errorCategory;
+window.analyticsFileType = fileType;
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
@@ -480,6 +485,7 @@ const STATUS_TEXT = {
 };
 
 const paywallNote = document.getElementById('paywallNote');
+let pricingSeen = false;   // pricing_viewed fires once per page load
 
 onBilling(b => {
   const gated = b.billingEnabled && b.gatedFeatures.includes('parse');
@@ -512,6 +518,7 @@ onBilling(b => {
 
   const until = formatDate(b.currentPeriodEnd);
   if (!b.hasSubscription || ['canceled', 'incomplete_expired'].includes(b.status)) {
+    if (b.plans.length && !pricingSeen) { pricingSeen = true; trackEvent('pricing_viewed', {}); }
     billingBody.innerHTML = b.plans.length
       ? `<p style="margin:0 0 12px">Choose how you want to be billed. Payment is handled by Stripe.</p>
          <div class="row">${b.plans.map(p => `<button class="btn" data-plan="${esc(p.key)}">${esc(p.name)}${p.trialDays ? ` — ${p.trialDays} days free` : ''}</button>`).join('')}</div>`
@@ -566,6 +573,9 @@ let tolls = [], trips = [], lastResult = null, parseId = '';
 const resolvedTrips = new Set();   // rows the user ticked off; view-only
 const $ = id => document.getElementById(id);
 const money = n => '$' + Number(n || 0).toFixed(2);
+// Analytics helpers are published by the module script above; behaviour only,
+// never document contents, guest names, plates or trip ids.
+const track = (name, params) => window.trackEvent && window.trackEvent(name, params);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
 /* ---------------- shell: navigation, toasts ---------------- */
@@ -578,7 +588,11 @@ function showView(name) {
     else b.removeAttribute('aria-current');
   });
   if (mobile()) closeDrawer();
-  if (name === 'billing' && window.refreshBilling) window.refreshBilling();
+  if (name === 'charge' && lastResult) track('results_viewed', counts());
+  if (name === 'billing') {
+    track('subscription_management_viewed', {});
+    if (window.refreshBilling) window.refreshBilling();
+  }
   window.scrollTo(0, 0);
 }
 window.showView = showView;
@@ -663,7 +677,10 @@ function renderTripCache() {
 $('tripFile').onchange = () => {
   const file = $('tripFile').files[0];
   if (!file) return;
+  const type = { document_type: 'trip_report', file_type: window.analyticsFileType(file.name) };
+  track('document_upload_started', type);
   const reader = new FileReader();
+  reader.onerror = () => track('document_upload_failed', { ...type, error_category: 'invalid_file' });
   reader.onload = () => {
     cachedTrip = {
       name: file.name,
@@ -672,6 +689,7 @@ $('tripFile').onchange = () => {
       data: String(reader.result).split(',')[1],
     };
     try { sessionStorage.setItem(TRIP_CACHE, JSON.stringify(cachedTrip)); } catch (e) { /* too big to keep; still usable now */ }
+    track('document_upload_completed', type);
     renderTripCache();
   };
   reader.readAsDataURL(file);
@@ -680,11 +698,27 @@ $('tripFile').onchange = () => {
 renderTripCache();
 
 $('tollFiles').onchange = () => {
-  const names = [...$('tollFiles').files].map(f => f.name);
+  const files = [...$('tollFiles').files];
+  const names = files.map(f => f.name);
   $('tollFilesNote').textContent = names.length ? `Selected: ${names.join(', ')}` : '';
+  files.forEach(file => {
+    const type = { document_type: 'toll_statement', file_type: window.analyticsFileType(file.name) };
+    track('document_upload_started', type);
+    track('document_upload_completed', type);
+  });
 };
 
 /* ---------------- processing ---------------- */
+/** Aggregate result counts — the only result data analytics ever sees. */
+function counts() {
+  const s = (lastResult && lastResult.summary) || {};
+  return {
+    matched_count: Number(s.matched || 0),
+    unmatched_count: Number(s.unmatched || 0),
+    transaction_count: Number(s.toll_count || 0),
+  };
+}
+
 function processing(text) {
   $('parseStatus').innerHTML = text
     ? `<span class="processing"><span class="spinner" aria-hidden="true"></span>${esc(text)}</span>`
@@ -706,8 +740,18 @@ $('parseBtn').onclick = async () => {
   localStorage.setItem('tollExclusions', exclude);
   $('parseBtn').disabled = true;
   processing('Reading documents and extracting transactions…');
+  const startedAt = Date.now();
+  let stage = 'upload';
+  let status = 0;
+  track('processing_started', {
+    expense_type: 'toll',
+    document_count: tollFiles.length,
+    file_type: window.analyticsFileType(tollFiles[0] && tollFiles[0].name),
+  });
   try {
     const res = await window.authFetch('/api/parse', { method: 'POST', body: form });
+    status = res.status;
+    stage = 'pdf_parse';
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
     const data = await res.json();
     parseId = data.parse_id;
@@ -718,11 +762,23 @@ $('parseBtn').onclick = async () => {
     $('rawText').textContent = Object.entries(data.raw_text).map(([k, v]) => `--- ${k} ---\n${v}`).join('\n\n');
     renderTolls(); renderTrips(); populateFilters();
     processing('Matching vehicles and trip dates…');
+    stage = 'matching';
     await runMatch();
     $('parseStatus').textContent = `${tolls.length} transactions, ${trips.length} trips.`;
+    track('processing_succeeded', {
+      processing_duration_ms: Date.now() - startedAt,
+      expense_type: 'toll',
+      trip_count: trips.length,
+      ...counts(),
+    });
     toast('Processing complete.');
     showView('charge');
   } catch (e) {
+    // Only a coarse bucket reaches GA; the detail stays on screen and in the logs.
+    track('processing_failed', {
+      processing_stage: stage,
+      error_category: window.analyticsErrorCategory(e, status),
+    });
     $('parseStatus').textContent = 'Error: ' + e.message;
     toast('Processing failed: ' + e.message, 'error');
   } finally { $('parseBtn').disabled = false; }
@@ -864,6 +920,11 @@ function filtered() {
 
 ['fFrom','fTo','fTrip'].forEach(id => $(id).oninput = () => renderResult(filtered()));
 ['fVehicle','fPlate','fSettled','dPlate','dStatus'].forEach(id => $(id).onchange = () => renderResult(filtered()));
+$('dStatus').addEventListener('change', () => {
+  const chosen = $('dStatus').value;
+  if (chosen === 'matched') track('matched_results_viewed', counts());
+  else if (chosen === 'unmatched') track('unmatched_results_viewed', counts());
+});
 $('clearFilters').onclick = () => {
   ['fFrom','fTo','fTrip','fVehicle','fPlate','dPlate','dStatus'].forEach(id => $(id).value = '');
   $('fSettled').checked = true;
@@ -918,7 +979,11 @@ async function openPngModal(trip, rows) {
     `<div class="muted">${esc(trip.guest)} · ${esc(trip.vehicle || '')} ${esc(trip.plate || '')} · ` +
     `${items.length} transaction${items.length === 1 ? '' : 's'} · total ${money(trip.toll_total)}</div>`;
   $('pngBody').innerHTML = `<img src="${pngUrl}" alt="Cropped statement rows for trip ${esc(trip.trip_id)}" />`;
-  $('pngDownload').onclick = () => downloadBlob(`tolls-${trip.trip_id}.png`, blob);
+  track('evidence_viewed', { evidence_type: 'toll', evidence_format: 'image', transaction_count: items.length });
+  $('pngDownload').onclick = () => {
+    track('evidence_downloaded', { evidence_type: 'toll', evidence_format: 'image' });
+    downloadBlob(`tolls-${trip.trip_id}.png`, blob);
+  };
   openModal('pngModal');
   $('pngClose').focus();
 }
@@ -928,6 +993,7 @@ const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
 /** One guest's statement: trip header, then a line per toll. */
 function tripCsv(trip, rows) {
   const items = tollsOf(trip.trip_id, rows);
+  track('evidence_downloaded', { evidence_type: 'toll', evidence_format: 'csv', transaction_count: items.length });
   const lines = [
     ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','already_charged','charge_total'].join(','),
     [trip.trip_id, trip.guest, trip.vehicle, trip.plate, trip.start, trip.end,
@@ -958,6 +1024,7 @@ function openTripModal(trip, rows) {
       <td class="muted">${esc(row.basis || '—')}</td><td>${esc(row.date)}</td><td>${esc(row.time || '')}</td>
       <td>${esc(row.plate || '')}</td><td class="trunc" title="${esc(row.location || '')}">${esc(row.location || '')}</td>
       <td class="num">${money(row.amount)}</td><td class="num">${money(row.charge)}</td></tr>`).join('') + '</tbody>';
+  track('evidence_viewed', { evidence_type: 'toll', evidence_format: 'breakdown', transaction_count: items.length });
   $('modalCsv').onclick = () => tripCsv(trip, rows);
   $('modalPng').onclick = () => openPngModal(trip, rows);
   openModal('tripModal');
@@ -1085,6 +1152,7 @@ $('exportBtn').onclick = () => {
     ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','already_charged','charge_total'].join(','),
     ...r.trips.map(t => [t.trip_id, t.guest, t.vehicle, t.plate, t.start, t.end, t.toll_count, t.toll_total, t.already_charged || 0, t.charge_total].map(cell).join(',')),
   ];
+  track('results_exported', { export_format: 'csv', ...counts() });
   download('toll-charges.csv', lines.join('\n'));
   toast('CSV download ready.');
 };
