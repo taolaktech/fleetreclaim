@@ -81,6 +81,8 @@ class Trip:
     end: str
     raw: dict[str, Any]
     already_charged: float = 0.0   # the marketplace's own "Tolls & tickets" charge
+    status: str = ""               # as written in the export, e.g. "Cancelled"
+    canceled: bool = False         # the vehicle never went out; excluded from matching
 
     def dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -422,6 +424,16 @@ def _to_amount(value: Any) -> float:
         return 0.0
 
 
+# "Cancelled", "Canceled by guest", "Trip cancelled - refunded", "Declined"… all
+# mean the same thing here: no one drove the car, so no toll belongs to the trip.
+CANCELED_WORDS = ("cancel", "declined", "withdrawn", "expired", "not booked")
+
+
+def _is_canceled(status: str) -> bool:
+    low = status.lower()
+    return any(word in low for word in CANCELED_WORDS)
+
+
 def _clean_plate(value: str) -> str:
     plate = value.strip().upper().replace(" ", "").replace("-", "")
     return "" if plate in {"NAN", "NONE"} else plate
@@ -452,6 +464,7 @@ def parse_trips(filename: str, data: bytes) -> list[Trip]:
     guest_col = _pick(columns, ("guest",), ("renter",), ("customer",), ("driver",))
     id_col = _pick(columns, ("reservation",), ("trip", "id"), ("confirmation",))
     charged_col = _pick(columns, ("toll", "ticket"), ("toll",))
+    status_col = _pick(columns, ("trip", "status"), ("reservation", "status"), ("status",))
 
     trips: list[Trip] = []
     for index, row in frame.iterrows():
@@ -459,6 +472,7 @@ def parse_trips(filename: str, data: bytes) -> list[Trip]:
         end = _to_iso(row.get(end_col)) if end_col else ""
         if not start and not end:
             continue
+        status = str(row.get(status_col) or "").strip() if status_col else ""
         vehicle = str(row.get(vehicle_col) or "").strip()
         plate = _clean_plate(str(row.get(plate_col) or "")) if plate_col else ""
         if not plate:
@@ -474,6 +488,8 @@ def parse_trips(filename: str, data: bytes) -> list[Trip]:
                 end=end or start,
                 raw={k: ("" if pd.isna(v) else str(v)) for k, v in row.items()},
                 already_charged=_to_amount(row.get(charged_col)) if charged_col else 0.0,
+                status=status,
+                canceled=_is_canceled(status),
             )
         )
     return trips

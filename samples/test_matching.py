@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.matching import match  # noqa: E402
-from app.parsers import PageLine, _line_to_toll  # noqa: E402
+from app.parsers import PageLine, _line_to_toll, parse_trips  # noqa: E402
 
 TRIP = {
     "trip_id": "58691937",
@@ -83,6 +83,30 @@ def main() -> int:
     assert result["summary"]["charge_total"] == 4.0
     result = run([toll(time="12:00")], trips=({**TRIP, "already_charged": 99.0},))
     assert result["trips"][0]["charge_total"] == 0.0
+
+    # A canceled trip owns nothing: no match, and it never shows up as a trip to bill.
+    canceled = {**TRIP, "canceled": True, "status": "Cancelled", "already_charged": 4.0}
+    result = run([toll(time="12:00")], trips=(canceled,))
+    assert result["rows"][0]["status"] == "unmatched", result["rows"][0]
+    assert result["trips"] == [], result["trips"]
+    assert result["summary"]["canceled_trips"] == 1
+
+    # ... and the overlapping active trip takes the toll instead.
+    active = {**TRIP, "trip_id": "X-3", "guest": "Ada", "status": "Completed"}
+    result = run([toll(time="12:00")], trips=(canceled, active))
+    assert result["rows"][0]["trip"]["trip_id"] == "X-3", result["rows"][0]
+    assert [t["trip_id"] for t in result["trips"]] == ["X-3"], result["trips"]
+
+    # Trip exports that carry a status column mark cancellations for the matcher.
+    export = (
+        "Reservation ID,Guest,Vehicle,Trip start,Trip end,Trip status\n"
+        "R-1,Dana,Tesla (TX #KJL4821),2026-03-01 15:00,2026-03-03 11:00,Completed\n"
+        "R-2,Miguel,RAV4 (CA #8XYZ123),2026-03-04 09:00,2026-03-06 18:00,Cancelled by guest\n"
+        "R-3,Priya,Kia (GA #PLT9900),2026-03-08 12:00,2026-03-10 10:00,\n"
+    )
+    parsed = parse_trips("trips.csv", export.encode())
+    assert [t.canceled for t in parsed] == [False, True, False], parsed
+    assert parsed[1].status == "Cancelled by guest"
 
     # Markup and fee apply to every charged toll.
     result = match([toll(time="12:00")], [TRIP], markup_pct=10, fee_per_toll=1)
