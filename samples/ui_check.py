@@ -27,12 +27,12 @@ def main() -> int:
         r1001 = page.locator("#chargeTable tr", has_text="R-1001").first
         cells = r1001.locator("td").all_inner_texts()
         print("R-1001 row:", cells)
-        assert cells[6] == "$16.35" and cells[7] == "$10.00" and cells[8] == "$6.35", cells
+        assert cells[7] == "$16.35" and cells[8] == "$10.00" and cells[9] == "$6.35", cells
 
         # R-1005 matched no toll but Turo collected $4 on it: still listed, $0 owed.
         paid = page.locator("#chargeTable tr", has_text="R-1005").first.locator("td").all_inner_texts()
         print("R-1005 row:", paid)
-        assert paid[5] == "0" and paid[7] == "$4.00" and paid[8] == "$0.00", paid
+        assert paid[6] == "0" and paid[8] == "$4.00" and paid[9] == "$0.00", paid
 
         page.check("#fSettled")
         page.wait_for_timeout(300)
@@ -42,6 +42,17 @@ def main() -> int:
         page.uncheck("#fSettled")
         page.wait_for_timeout(300)
         assert page.locator("#chargeTable tr", has_text="R-1005").count() == 1
+
+        # hiding a row is view-only: it leaves the table, totals stay put
+        before_total = page.locator("#cards .card").nth(5).inner_text()
+        page.locator("#chargeTable tr", has_text="R-1003").first.locator("[data-hide]").click()
+        page.wait_for_timeout(300)
+        print("after hiding R-1003:", page.locator("#hiddenNote").inner_text())
+        assert page.locator("#chargeTable tr", has_text="R-1003").count() == 0
+        assert page.locator("#cards .card").nth(5).inner_text() == before_total
+        page.click("#showAll")
+        page.wait_for_timeout(300)
+        assert page.locator("#chargeTable tr", has_text="R-1003").count() == 1
 
         page.select_option("#fPlate", "KJL4821")
         page.wait_for_timeout(300)
@@ -59,7 +70,7 @@ def main() -> int:
         page.click("#clearFilters")
         page.fill("#fTrip", "R-1004")
         page.wait_for_timeout(300)
-        trip_cells = page.locator("#chargeTable tr td:nth-child(1)").all_inner_texts()
+        trip_cells = page.locator("#chargeTable tr td:nth-child(2)").all_inner_texts()
         print("trip filter:", trip_cells)
         assert trip_cells == ["R-1004"], trip_cells
 
@@ -69,7 +80,7 @@ def main() -> int:
         rav4 = next(v for v in vehicles if "RAV4" in v)
         page.select_option("#fVehicle", rav4)
         page.wait_for_timeout(300)
-        shown = page.locator("#chargeTable tr td:nth-child(3)").all_inner_texts()
+        shown = page.locator("#chargeTable tr td:nth-child(4)").all_inner_texts()
         print("vehicle filter rows:", rows(), shown)
         assert rows() > 0 and set(shown) == {rav4}, shown
 
