@@ -212,7 +212,11 @@ def test_checkout_uses_the_uid_customer_and_server_side_price() -> None:
     assert args["line_items"] == [{"price": "price_yearly", "quantity": 1}]
     assert args["customer"] == fake.customers[0].id
     assert fake.customers[0]["metadata"][billing.UID_KEY] == ALICE.uid
-    assert fake.idempotency_keys == [f"customer:{ALICE.uid}"]
+    assert fake.idempotency_keys == [billing._customer_key(ALICE)]
+    # A changed Google profile must not collide with the earlier key.
+    assert billing._customer_key(ALICE) != billing._customer_key(
+        AuthUser(uid=ALICE.uid, email="renamed@example.com", name=ALICE.name)
+    )
 
 
 def test_yearly_checkout_carries_the_free_trial_and_monthly_does_not() -> None:

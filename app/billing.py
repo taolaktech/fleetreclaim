@@ -9,6 +9,7 @@ device, after any sign-out, forever.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from dataclasses import dataclass
@@ -106,6 +107,11 @@ def find_customer(user: AuthUser) -> Any | None:
     )
 
 
+def _customer_key(user: AuthUser) -> str:
+    profile = hashlib.sha256(f"{user.email}|{user.name}".encode()).hexdigest()[:16]
+    return f"customer:{user.uid}:{profile}"
+
+
 def get_or_create_customer(user: AuthUser) -> Any:
     """Idempotent: the same uid always ends up on one customer."""
     existing = find_customer(user)
@@ -117,8 +123,10 @@ def get_or_create_customer(user: AuthUser) -> Any:
             email=user.email or None,
             name=user.name or None,
             metadata={UID_KEY: user.uid},
-            # Two rapid checkout clicks must not mint two customers.
-            idempotency_key=f"customer:{user.uid}",
+            # Two rapid checkout clicks must not mint two customers. The key
+            # covers the profile too: Stripe refuses a reused key whose
+            # parameters changed, and a Google profile can change.
+            idempotency_key=_customer_key(user),
         )
     except Exception as exc:
         raise _fail(exc, "Could not start billing. Try again in a moment.") from exc
