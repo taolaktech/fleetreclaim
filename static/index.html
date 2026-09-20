@@ -33,7 +33,8 @@
     position:fixed; inset:0 0 auto 0; z-index:30;
   }
   .appbar .brand { display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:.2px; font-size:15px; color:#fff; }
-  .brand .mark { width:24px; height:24px; display:block; }
+  .brand .mark { width:30px; height:30px; display:block; }
+  #navToggle { display:none; }
   .appbar .spacer { flex:1; }
   .iconbtn {
     background:transparent; border:1px solid transparent; color:inherit; border-radius:var(--radius);
@@ -72,6 +73,15 @@
     width:var(--sidebar-w); flex:none; background:var(--color-surface); border-right:1px solid var(--color-border);
     position:fixed; top:var(--header-h); bottom:0; left:0; overflow:auto; padding:10px 8px; z-index:20;
   }
+  .sidebar .railtop { display:flex; justify-content:flex-end; padding:0 2px 4px; }
+  #navCollapse {
+    background:none; border:1px solid transparent; color:var(--color-text-muted); border-radius:var(--radius);
+    height:28px; min-width:28px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+  }
+  #navCollapse:hover { background:var(--color-surface-alt); color:var(--color-text); }
+  #navCollapse svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.3; stroke-linecap:round; stroke-linejoin:round; }
+  body.nav-collapsed .railtop { justify-content:center; }
+  body.nav-collapsed #navCollapse svg { transform:scaleX(-1); }
   .sidebar .group { font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--color-text-muted); padding:12px 10px 6px; }
   .navitem {
     display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; cursor:pointer;
@@ -197,6 +207,8 @@
     body.nav-collapsed { --sidebar-w:216px; }
     body.nav-collapsed .navitem .label, body.nav-collapsed .navitem .tag, body.nav-collapsed .sidebar .group { display:revert; }
     body.nav-collapsed .navitem { justify-content:flex-start; padding:8px 10px; }
+    #navToggle { display:inline-flex; }
+    .sidebar .railtop { display:none; }
     .scrim { position:fixed; inset:var(--header-h) 0 0 0; background:rgba(9,20,16,.35); z-index:15; }
     table { min-width:760px; }
   }
@@ -204,7 +216,7 @@
 </head>
 <body>
 <header class="appbar">
-  <button id="navToggle" class="iconbtn" aria-label="Toggle navigation" aria-expanded="true">☰</button>
+  <button id="navToggle" class="iconbtn" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar">☰</button>
   <div class="brand"><img class="mark" src="/logo.png" alt=""> FleetReclaim</div>
   <div class="spacer"></div>
   <div id="userMenu" class="usermenu hidden"></div>
@@ -214,10 +226,15 @@
 
 <div id="app" class="shell hidden">
   <nav class="sidebar" id="sidebar" aria-label="Sections">
+    <div class="railtop">
+      <button id="navCollapse" aria-label="Collapse navigation" title="Collapse navigation" aria-expanded="true" aria-controls="sidebar">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M6.2 2.5v11M11.6 6.2 9.8 8l1.8 1.8"/></svg>
+      </button>
+    </div>
     <div class="group">Expense resolution</div>
     <button class="navitem" data-view="dashboard" aria-current="page" aria-label="Dashboard" title="Dashboard"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="5" height="11" rx="1"/><rect x="9.5" y="2.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="4" rx="1"/></svg><span class="label">Dashboard</span></button>
     <button class="navitem" data-view="charge" aria-label="Recovery" title="Recovery"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5v7M10 6.2c-.5-.7-1.2-1-2-1-1 0-1.8.5-1.8 1.3 0 2 3.8.9 3.8 2.9 0 .9-.9 1.4-2 1.4-.9 0-1.6-.3-2.1-1"/></svg><span class="label">Recovery</span></button>
-    <button class="navitem" data-view="items" aria-label="Tolls &amp; violations" title="Tolls &amp; violations"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg><span class="label">Tolls &amp; violations</span></button>
+    <button class="navitem" data-view="items" aria-label="Tolls &amp; violations" title="Tolls &amp; violations"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.8h9v12.4l-1.5-1.1-1.5 1.1-1.5-1.1-1.5 1.1-1.5-1.1-1.5 1.1z"/><path d="M5.8 5.2h4.4M5.8 8h4.4M5.8 10.4h2.6"/></svg><span class="label">Tolls &amp; violations</span></button>
     <button class="navitem" data-view="trips" aria-label="Trips" title="Trips"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 10.5h12.4M3.2 10.5V8.2l1.3-3h7l1.3 3v2.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg><span class="label">Trips</span></button>
     <div class="group">Account</div>
     <button class="navitem" data-view="billing" aria-label="Billing (coming soon)" title="Billing (coming soon)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5"/><path d="M1.5 7h13"/></svg><span class="label">Billing</span><span class="tag">Soon</span></button>
@@ -470,25 +487,25 @@ document.querySelectorAll('.navitem').forEach(b => b.onclick = () => showView(b.
 const closeDrawer = () => {
   document.body.classList.remove('nav-open');
   $('scrim').classList.add('hidden');
-  if (mobile()) $('navToggle').setAttribute('aria-expanded', 'false');
+  syncNavToggle();
 };
 $('navToggle').onclick = () => {
-  if (mobile()) {
-    const open = !document.body.classList.contains('nav-open');
-    document.body.classList.toggle('nav-open', open);
-    $('scrim').classList.toggle('hidden', !open);
-    $('navToggle').setAttribute('aria-expanded', String(open));
-  } else {
-    const collapsed = document.body.classList.toggle('nav-collapsed');
-    $('navToggle').setAttribute('aria-expanded', String(!collapsed));
-  }
+  const open = !document.body.classList.contains('nav-open');
+  document.body.classList.toggle('nav-open', open);
+  $('scrim').classList.toggle('hidden', !open);
+  syncNavToggle();
+};
+$('navCollapse').onclick = () => {
+  const collapsed = document.body.classList.toggle('nav-collapsed');
+  const label = collapsed ? 'Expand navigation' : 'Collapse navigation';
+  $('navCollapse').setAttribute('aria-label', label);
+  $('navCollapse').title = label;
+  syncNavToggle();
 };
 $('scrim').onclick = closeDrawer;
 function syncNavToggle() {
-  const expanded = mobile()
-    ? document.body.classList.contains('nav-open')
-    : !document.body.classList.contains('nav-collapsed');
-  $('navToggle').setAttribute('aria-expanded', String(expanded));
+  $('navToggle').setAttribute('aria-expanded', String(document.body.classList.contains('nav-open')));
+  $('navCollapse').setAttribute('aria-expanded', String(!document.body.classList.contains('nav-collapsed')));
 }
 window.addEventListener('resize', () => {
   if (!mobile()) closeDrawer();
