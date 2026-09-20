@@ -76,28 +76,19 @@
     </div>
   </section>
 
-  <section id="settings" class="hidden">
-    <h2>2. Matching rules</h2>
-    <div class="grid">
-      <div><label>Buffer around trip (hours)</label><input id="buffer" type="number" step="0.5" value="2" /></div>
-      <div><label>Markup on each toll (%)</label><input id="markup" type="number" step="1" value="0" /></div>
-      <div><label>Admin fee per toll ($)</label><input id="fee" type="number" step="0.5" value="0" /></div>
-    </div>
-  </section>
-
   <section id="tollSection" class="hidden">
-    <h2>3. Tolls read from the bill <span class="muted" id="tollCount"></span></h2>
+    <h2>2. Tolls read from the bill <span class="muted" id="tollCount"></span></h2>
     <p class="muted">Edit anything the OCR got wrong — matching updates instantly.</p>
     <div class="scroll"><table id="tollTable"></table></div>
   </section>
 
   <section id="tripSection" class="hidden">
-    <h2>4. Trips <span class="muted" id="tripCount"></span></h2>
+    <h2>3. Trips <span class="muted" id="tripCount"></span></h2>
     <div class="scroll"><table id="tripTable"></table></div>
   </section>
 
   <section id="resultSection" class="hidden">
-    <h2>5. What to charge</h2>
+    <h2>4. What to charge</h2>
     <p class="muted">Ambiguous tolls fit more than one trip; they are charged in full to the best-ranked trip — check them. Unmatched tolls fall outside every trip's dates and are charged to nobody.</p>
     <div class="grid" style="margin-bottom:16px">
       <div><label>From date</label><input id="fFrom" type="date" /></div>
@@ -165,12 +156,9 @@ let tolls = [], trips = [], lastResult = null, parseId = '';
 const $ = id => document.getElementById(id);
 const money = n => '$' + Number(n || 0).toFixed(2);
 
+// Matching defaults: 2h either side of the trip, no markup, no admin fee.
 function settings() {
-  return {
-    buffer_hours: parseFloat($('buffer').value) || 0,
-    markup_pct: parseFloat($('markup').value) || 0,
-    fee_per_toll: parseFloat($('fee').value) || 0,
-  };
+  return { buffer_hours: 2, markup_pct: 0, fee_per_toll: 0 };
 }
 
 $('parseBtn').onclick = async () => {
@@ -193,7 +181,7 @@ $('parseBtn').onclick = async () => {
     trips = data.trips;
     $('parseStatus').textContent = `${tolls.length} toll line items, ${trips.length} trips.`;
     $('rawText').textContent = Object.entries(data.raw_text).map(([k, v]) => `--- ${k} ---\n${v}`).join('\n\n');
-    ['settings','tollSection','tripSection','resultSection','rawSection'].forEach(id => $(id).classList.remove('hidden'));
+    ['tollSection','tripSection','resultSection','rawSection'].forEach(id => $(id).classList.remove('hidden'));
     renderTolls(); renderTrips(); populateFilters(); await runMatch();
   } catch (e) {
     $('parseStatus').textContent = 'Error: ' + e.message;
@@ -201,8 +189,6 @@ $('parseBtn').onclick = async () => {
 };
 
 $('excludeList').value = localStorage.getItem('tollExclusions') || '';
-
-['buffer','markup','fee'].forEach(id => $(id).oninput = () => runMatch());
 
 function renderTolls() {
   $('tollCount').textContent = `(${tolls.length})`;
