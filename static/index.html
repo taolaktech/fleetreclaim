@@ -493,7 +493,7 @@ function renderResult(r) {
     <div class="card"><span class="muted">Matched</span><b>${s.matched}</b></div>
     <div class="card"><span class="muted">Unmatched</span><b>${s.unmatched}</b></div>
     <div class="card"><span class="muted">Tolls/tickets total</span><b>${money(s.toll_total)}</b></div>
-    <div class="card"><span class="muted">Charge total</span><b>${money(s.charge_total)}</b></div>`;
+    <div class="card"><span class="muted">Recoverable amount</span><b>${money(s.charge_total)}</b></div>`;
 
   // Resolving a row only tidies the view; totals and the CSV keep every trip.
   const shown = r.trips.filter(t => !resolvedTrips.has(String(t.trip_id)));
