@@ -7,3 +7,4 @@ pillow
 pandas
 openpyxl
 firebase-admin
+stripe>=12,<13

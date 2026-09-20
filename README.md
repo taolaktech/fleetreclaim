@@ -80,10 +80,64 @@ domains.
 With no Firebase project configured, `DEV_AUTH_BYPASS=1` runs the app open for
 local development; it is ignored as soon as Admin credentials exist.
 
+## Billing
+
+Subscriptions run on Stripe, still with no application database. Firebase says
+who the user is, Stripe says whether they have paid, and the bridge between them
+is the Firebase uid stored on the Stripe customer as `metadata.firebaseUid`.
+Every read goes to Stripe, so a subscription survives sign-out, a new browser
+and a new device with nothing to keep in sync.
+
+Endpoints, all behind `require_firebase_user`:
+
+| Route | Does |
+| --- | --- |
+| `GET /api/billing/status` | normalized state from Stripe |
+| `POST /api/billing/checkout` | hosted Checkout for a plan key |
+| `POST /api/billing/cancel` | `cancel_at_period_end=true`, access kept to the period end |
+| `POST /api/billing/resume` | undoes a pending cancellation |
+| `POST /api/billing/portal` | hosted Customer Portal session |
+| `POST /api/stripe/webhook` | signature-verified events (public, verified by signature) |
+
+The browser sends a plan key (`starter`, `pro`) and never a Price ID, customer
+ID or subscription ID: the server resolves those from `app/billing.py`'s plan map
+and from the uid on the token. `/billing/success` confirms with Stripe rather
+than trusting the redirect, and checkout is refused when a live subscription
+already exists.
+
+### Stripe setup
+
+1. Products → add a product per plan, each with a **recurring** price; copy the
+   `price_…` ids into `STRIPE_PRICE_STARTER_MONTHLY` / `STRIPE_PRICE_PRO_MONTHLY`.
+   A plan with no configured price is not offered in the UI.
+2. Developers → API keys → copy the secret key into `STRIPE_SECRET_KEY`
+   (test key while developing, live key in production).
+3. Settings → Billing → Customer portal → activate it, and allow cancellation
+   and payment-method updates.
+4. Local webhooks:
+
+   ```bash
+   stripe listen --forward-to localhost:8080/api/stripe/webhook
+   ```
+
+   Put the `whsec_…` it prints into `STRIPE_WEBHOOK_SECRET`.
+5. Production: Developers → Webhooks → add `https://your-host/api/stripe/webhook`
+   for `checkout.session.completed`, `customer.subscription.*`, `invoice.paid`
+   and `invoice.payment_failed`, then copy that endpoint's signing secret into
+   `STRIPE_WEBHOOK_SECRET`.
+
+Nothing is behind the paywall yet. `PAID_FEATURES=parse,evidence` turns on the
+`requires_subscription` gate for document processing and evidence images; the
+default empty value leaves every feature open to signed-in users.
+
 ## Sample data / test
 
 ```bash
 python samples/make_samples.py   # writes a fake toll bill (PDF+PNG) and trips CSV
 DEV_AUTH_BYPASS=1 python -m uvicorn app.main:app --port 8080   # server under test
 python samples/smoke_test.py     # end-to-end check against a running server
+python samples/test_matching.py  # matching rules
+python samples/test_auth.py      # auth boundaries
+python samples/test_billing.py   # Stripe billing against a fake Stripe
+python samples/ui_check.py       # browser flow against a running server
 ```

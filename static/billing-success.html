@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Subscription — FleetReclaim</title>
+<link rel="icon" href="/logo.png" type="image/png">
+<style>
+  :root {
+    --color-primary:#003B2A; --color-background:#F5F7F8; --color-surface:#fff;
+    --color-border:#dde2e6; --color-border-strong:#c6ced4;
+    --color-text:#16211f; --color-text-muted:#66757e; --color-danger:#b42318;
+  }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         font:13px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         background:var(--color-background); color:var(--color-text); }
+  .box { background:var(--color-surface); border:1px solid var(--color-border); border-radius:10px;
+         padding:30px; width:min(420px,92vw); text-align:center; box-shadow:0 8px 28px rgba(16,24,40,.08); }
+  .brand { display:flex; align-items:center; justify-content:center; gap:9px; font-weight:700; font-size:16px; margin-bottom:18px; }
+  .brand .mark { width:34px; height:34px; display:block; }
+  h1 { font-size:16px; margin:0 0 6px; }
+  p { color:var(--color-text-muted); margin:0 0 18px; }
+  a.btn { display:inline-block; text-decoration:none; background:var(--color-primary); color:#fff;
+          border-radius:6px; padding:9px 16px; font-weight:600; }
+  .error { color:var(--color-danger); }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="brand"><img class="mark" src="/logo.png" alt=""> FleetReclaim</div>
+    <h1 id="title">Confirming subscription…</h1>
+    <p id="detail">Checking with Stripe. This takes a few seconds.</p>
+    <a class="btn" href="/?view=billing">Go to Billing</a>
+  </div>
+<script type="module">
+import { requireAuth } from '/auth.js';
+import { refresh } from '/billing.js';
+
+const title = document.getElementById('title');
+const detail = document.getElementById('detail');
+
+// The redirect proves nothing: only Stripe's own status counts, and it can lag
+// a moment behind checkout, so poll a bounded number of times.
+const ATTEMPTS = 6;
+
+async function confirm() {
+  if (!(await requireAuth())) return;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    const state = await refresh();
+    if (!state.billingEnabled) {
+      title.textContent = 'Billing is unavailable';
+      detail.textContent = 'This deployment has no billing configured.';
+      return;
+    }
+    if (state.isActive) {
+      title.textContent = 'Subscription active';
+      detail.textContent = `Your ${state.planName ? state.planName + ' plan' : 'subscription'} is live. Thanks for subscribing.`;
+      return;
+    }
+    if (state.status === 'past_due' || state.status === 'unpaid') {
+      title.textContent = 'Payment problem';
+      detail.textContent = 'Stripe could not take the payment. Update your payment method from Billing.';
+      detail.className = 'error';
+      return;
+    }
+    if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, 2000));
+  }
+  title.textContent = 'Still confirming';
+  detail.textContent = 'Stripe has not confirmed the subscription yet. Open Billing in a minute to check again.';
+}
+
+confirm();
+</script>
+</body>
+</html>

@@ -7,11 +7,12 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel
 
+from . import billing
 from .auth import AuthUser, auth_enabled, require_firebase_user, web_config
 from .matching import match
 from .parsers import parse_tolls, parse_trips
@@ -38,6 +39,10 @@ class CropRequest(BaseModel):
     title: str = ""
     subtitle: str = ""
     items: list[CropItem]
+
+
+class CheckoutRequest(BaseModel):
+    plan: str
 
 
 class MatchRequest(BaseModel):
@@ -73,10 +78,71 @@ def auth_module() -> FileResponse:
     return FileResponse(STATIC / "auth.js", media_type="text/javascript")
 
 
+@app.get("/billing.js")
+def billing_module() -> FileResponse:
+    return FileResponse(STATIC / "billing.js", media_type="text/javascript")
+
+
+@app.get("/billing/success")
+def billing_success() -> FileResponse:
+    return _page("billing-success.html")
+
+
 @app.get("/api/config")
 def config() -> dict[str, Any]:
     """Frontend-safe Firebase config. Admin credentials never leave the server."""
-    return {"auth_enabled": auth_enabled(), "firebase": web_config()}
+    return {
+        "auth_enabled": auth_enabled(),
+        "firebase": web_config(),
+        "billing_enabled": billing.configured(),
+        "plans": billing.available_plans(),
+    }
+
+
+def _base_url(request: Request) -> str:
+    return str(request.base_url).rstrip("/")
+
+
+@app.get("/api/billing/status")
+def billing_status(user: AuthUser = Depends(require_firebase_user)) -> dict[str, Any]:
+    """Stripe is the source of truth, so this survives logout and new devices."""
+    if not billing.configured():
+        return {"billingEnabled": False, **billing.no_subscription()}
+    return {"billingEnabled": True, **billing.subscription_status(user)}
+
+
+@app.post("/api/billing/checkout")
+def billing_checkout(
+    body: CheckoutRequest,
+    request: Request,
+    user: AuthUser = Depends(require_firebase_user),
+) -> dict[str, str]:
+    return {"url": billing.create_checkout(user, body.plan, _base_url(request))}
+
+
+@app.post("/api/billing/cancel")
+def billing_cancel(user: AuthUser = Depends(require_firebase_user)) -> dict[str, Any]:
+    return {"billingEnabled": True, **billing.set_cancel_at_period_end(user, True)}
+
+
+@app.post("/api/billing/resume")
+def billing_resume(user: AuthUser = Depends(require_firebase_user)) -> dict[str, Any]:
+    return {"billingEnabled": True, **billing.set_cancel_at_period_end(user, False)}
+
+
+@app.post("/api/billing/portal")
+def billing_portal(
+    request: Request, user: AuthUser = Depends(require_firebase_user)
+) -> dict[str, str]:
+    return {"url": billing.create_portal_session(user, _base_url(request))}
+
+
+@app.post("/api/stripe/webhook")
+async def stripe_webhook(request: Request) -> dict[str, str]:
+    """Signature-verified Stripe events. Stripe stays authoritative; we only log."""
+    event = billing.verify_webhook(await request.body(), request.headers.get("stripe-signature", ""))
+    billing.handle_event(event)
+    return {"received": "true"}
 
 
 @app.get("/api/me")
@@ -89,7 +155,7 @@ async def parse(
     toll_files: list[UploadFile] = File(...),
     trip_file: UploadFile = File(...),
     exclude: str = Form(""),
-    user: AuthUser = Depends(require_firebase_user),
+    user: AuthUser = billing.requires_subscription("parse"),
 ) -> dict[str, Any]:
     trips = parse_trips(trip_file.filename or "trips.csv", await trip_file.read())
     known_plates = {t.plate for t in trips if t.plate}
@@ -138,7 +204,7 @@ def _font(size: int) -> ImageFont.ImageFont:
 
 
 @app.post("/api/crop")
-def crop(request: CropRequest, user: AuthUser = Depends(require_firebase_user)) -> Response:
+def crop(request: CropRequest, user: AuthUser = billing.requires_subscription("evidence")) -> Response:
     """Stack this trip's rows from the original bill into one screenshot-ready PNG."""
     pages = PAGES.get(request.parse_id)
     if pages is not None and PAGE_OWNERS.get(request.parse_id) != user.uid:

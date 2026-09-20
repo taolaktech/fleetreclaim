@@ -242,7 +242,7 @@
     <button class="navitem" data-view="items" aria-label="Tolls &amp; violations" title="Tolls &amp; violations"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.8h9v12.4l-1.5-1.1-1.5 1.1-1.5-1.1-1.5 1.1-1.5-1.1-1.5 1.1z"/><path d="M5.8 5.2h4.4M5.8 8h4.4M5.8 10.4h2.6"/></svg><span class="label">Tolls &amp; violations</span></button>
     <button class="navitem" data-view="trips" aria-label="Trips" title="Trips"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 10.5h12.4M3.2 10.5V8.2l1.3-3h7l1.3 3v2.3"/><circle cx="5" cy="12" r="1.3"/><circle cx="11" cy="12" r="1.3"/></svg><span class="label">Trips</span></button>
     <div class="group">Account</div>
-    <button class="navitem" data-view="billing" aria-label="Billing (coming soon)" title="Billing (coming soon)"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5"/><path d="M1.5 7h13"/></svg><span class="label">Billing</span><span class="tag">Soon</span></button>
+    <button class="navitem" data-view="billing" aria-label="Billing" title="Billing"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5"/><path d="M1.5 7h13"/></svg><span class="label">Billing</span></button>
     <button class="navitem" data-view="diagnostics" aria-label="Diagnostics" title="Diagnostics"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4"/></svg><span class="label">Diagnostics</span></button>
   </nav>
   <div id="scrim" class="scrim hidden"></div>
@@ -371,10 +371,10 @@
       </section>
     </div>
 
-    <!-- ============ Billing placeholder ============ -->
+    <!-- ============ Billing ============ -->
     <div class="view hidden" data-view="billing">
-      <div class="pagehead"><div><h1>Billing</h1><p>Subscription management is not available yet.</p></div></div>
-      <section class="panel"><div class="body"><p class="muted" style="margin:0">Nothing to pay for today — FleetReclaim runs entirely on your own machine. This page is a placeholder for a future plan and invoice view.</p></div></section>
+      <div class="pagehead"><div><h1>Billing</h1><p>Your subscription, billed securely through Stripe.</p></div></div>
+      <section class="panel"><div class="body" id="billingBody"><p class="muted" style="margin:0">Loading billing…</p></div></section>
     </div>
 
     <!-- ============ Diagnostics ============ -->
@@ -419,6 +419,7 @@
 
 <script type="module">
 import { authFetch, onAuth, requireAuth, signOut } from '/auth.js';
+import { cancel, formatDate, onBilling, openPortal, refresh, resume, subscribe } from '/billing.js';
 
 // One place the rest of the page gets an authenticated fetch from.
 window.authFetch = authFetch;
@@ -465,7 +466,70 @@ onAuth(state => {
   document.getElementById('signOut').onclick = () => signOut();
 });
 
-requireAuth();
+/* ---------------- billing view ---------------- */
+const billingBody = document.getElementById('billingBody');
+
+const STATUS_TEXT = {
+  active: 'Active', trialing: 'Trial', past_due: 'Payment failed', unpaid: 'Unpaid',
+  incomplete: 'Awaiting payment', incomplete_expired: 'Checkout expired', canceled: 'Canceled',
+  paused: 'Paused', none: 'No subscription',
+};
+
+onBilling(b => {
+  if (b.loading) { billingBody.innerHTML = '<p class="muted" style="margin:0">Loading billing…</p>'; return; }
+  if (b.error) { billingBody.innerHTML = `<p style="margin:0;color:var(--color-danger)">${esc(b.error)}</p>`; return; }
+  if (!b.billingEnabled) {
+    billingBody.innerHTML = '<p class="muted" style="margin:0">Billing is not switched on for this deployment.</p>';
+    return;
+  }
+
+  const until = formatDate(b.currentPeriodEnd);
+  if (!b.hasSubscription || ['canceled', 'incomplete_expired'].includes(b.status)) {
+    billingBody.innerHTML = b.plans.length
+      ? `<p style="margin:0 0 12px">Choose a plan to subscribe. Payment is handled by Stripe.</p>
+         <div class="row">${b.plans.map(p => `<button class="btn" data-plan="${esc(p.key)}">Subscribe to ${esc(p.name)}</button>`).join('')}</div>`
+      : '<p class="muted" style="margin:0">No plans are configured yet.</p>';
+    return;
+  }
+
+  const rows = [
+    ['Plan', b.planName || '—'],
+    ['Status', STATUS_TEXT[b.status] || b.status],
+    [b.cancelAtPeriodEnd ? 'Access until' : 'Next billing date', until || '—'],
+  ];
+  billingBody.innerHTML = `
+    ${b.inGrace ? '<p style="margin:0 0 12px;color:var(--color-danger)">Your last payment failed. Update your payment method to keep your subscription.</p>' : ''}
+    ${b.cancelAtPeriodEnd ? `<p style="margin:0 0 12px">Your subscription is set to end${until ? ` on ${esc(until)}` : ''}. You keep full access until then.</p>` : ''}
+    <div class="cards" style="margin-bottom:14px">
+      ${rows.map(([label, value]) => `<div class="card"><span>${esc(label)}</span><b style="font-size:15px">${esc(value)}</b></div>`).join('')}
+    </div>
+    <div class="row">
+      <button class="btn secondary" data-billing="portal">${b.inGrace ? 'Update payment method' : 'Manage billing'}</button>
+      ${b.cancelAtPeriodEnd
+        ? '<button class="btn" data-billing="resume">Resume subscription</button>'
+        : '<button class="btn secondary" data-billing="cancel">Cancel subscription</button>'}
+    </div>`;
+});
+
+billingBody.onclick = async e => {
+  const button = e.target.closest('[data-plan],[data-billing]');
+  if (!button) return;
+  const { plan, billing: action } = button.dataset;
+  button.disabled = true;
+  try {
+    if (plan) await subscribe(plan);
+    else if (action === 'portal') await openPortal();
+    else if (action === 'cancel') await cancel();
+    else if (action === 'resume') await resume();
+  } catch (err) {
+    window.toast(err.message, 'error');
+    button.disabled = false;
+  }
+};
+
+window.refreshBilling = refresh;
+
+requireAuth().then(user => { if (user) refresh(); });
 </script>
 <script>
 let tolls = [], trips = [], lastResult = null, parseId = '';
@@ -484,10 +548,15 @@ function showView(name) {
     else b.removeAttribute('aria-current');
   });
   if (mobile()) closeDrawer();
+  if (name === 'billing' && window.refreshBilling) window.refreshBilling();
   window.scrollTo(0, 0);
 }
 window.showView = showView;
 document.querySelectorAll('.navitem').forEach(b => b.onclick = () => showView(b.dataset.view));
+
+// Stripe sends people back to /?view=billing when they leave checkout or the portal.
+const requestedView = new URLSearchParams(location.search).get('view');
+if (requestedView && document.querySelector(`.view[data-view="${requestedView}"]`)) showView(requestedView);
 
 const closeDrawer = () => {
   document.body.classList.remove('nav-open');
