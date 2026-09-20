@@ -2,6 +2,7 @@
 
 import csv
 import io
+import os
 import uuid
 from collections import OrderedDict
 from pathlib import Path
@@ -83,6 +84,11 @@ def billing_module() -> FileResponse:
     return FileResponse(STATIC / "billing.js", media_type="text/javascript")
 
 
+@app.get("/analytics.js")
+def analytics_module() -> FileResponse:
+    return FileResponse(STATIC / "analytics.js", media_type="text/javascript")
+
+
 @app.get("/billing/success")
 def billing_success() -> FileResponse:
     return _page("billing-success.html")
@@ -94,6 +100,8 @@ def config() -> dict[str, Any]:
     return {
         "auth_enabled": auth_enabled(),
         "firebase": web_config(),
+        # A GA4 measurement id is public; analytics stay off when it is unset.
+        "ga_measurement_id": os.environ.get("GA_MEASUREMENT_ID", ""),
         "billing_enabled": billing.configured(),
         "plans": billing.available_plans(),
     }

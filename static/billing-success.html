@@ -33,6 +33,7 @@
     <a class="btn" href="/?view=billing">Go to Billing</a>
   </div>
 <script type="module">
+import { trackEvent } from '/analytics.js';
 import { requireAuth } from '/auth.js';
 import { refresh } from '/billing.js';
 
@@ -53,11 +54,14 @@ async function confirm() {
       return;
     }
     if (state.isActive) {
+      // Stripe has confirmed it server-side; owner access never lands here.
+      if (!state.isOwner) trackEvent('subscription_confirmed', { billing_period: state.plan === 'yearly' ? 'annual' : 'monthly' });
       title.textContent = 'Subscription active';
       detail.textContent = `Your ${state.planName ? state.planName.toLowerCase() + ' ' : ''}subscription is live. Thanks for subscribing.`;
       return;
     }
     if (state.status === 'past_due' || state.status === 'unpaid') {
+      trackEvent('subscription_payment_failed', {});
       title.textContent = 'Payment problem';
       detail.textContent = 'Stripe could not take the payment. Update your payment method from Billing.';
       detail.className = 'error';

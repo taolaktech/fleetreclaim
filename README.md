@@ -144,6 +144,38 @@ Their Billing page shows "FleetReclaim Internal / Active / Full access" with no
 Stripe controls, and the checkout, cancel, resume and portal endpoints return
 403 for them.
 
+## Analytics
+
+`GA_MEASUREMENT_ID=G-XXXXXXXXXX` (the same GA4 property as the marketing site)
+turns on Google Analytics; unset, `static/analytics.js` loads nothing and every
+`trackEvent()` call is a no-op. The id is served to the browser by `/api/config`
+— it is public by design, unlike every other server-side value. gtag.js is
+loaded asynchronously and all analytics failures are swallowed, so a blocked or
+missing GA never affects sign-in, uploads, processing or billing.
+
+`gtag('config', …)` sets a cross-domain linker for `fleetreclaim.com` and
+`app.fleetreclaim.com` so an ad click through the landing page stays one
+session instead of appearing as a self-referral.
+
+Events (all snake_case, sent through `trackEvent()`): `login_started`,
+`login_success`, `login_failed`, `logout`, `document_upload_started`,
+`document_upload_completed`, `document_upload_failed`, `processing_started`,
+`processing_succeeded`, `processing_failed`, `results_viewed`,
+`matched_results_viewed`, `unmatched_results_viewed`, `results_exported`,
+`evidence_viewed`, `evidence_downloaded`, `pricing_viewed`,
+`subscription_management_viewed`, `billing_period_selected`,
+`checkout_started`, `billing_portal_opened`, `subscription_cancel_requested`,
+`subscription_resumed`, `subscription_confirmed`,
+`subscription_payment_failed`.
+
+Only behavioural and aggregate parameters are sent: counts, durations, file and
+document type buckets, billing period, and coarse `processing_stage` /
+`error_category` values. Names, emails, Firebase uids, plates, trip ids,
+filenames, document text, amounts and Stripe identifiers are never sent, and
+raw exception messages stay in the server logs. `checkout_started` is an
+intent — only `subscription_confirmed`, emitted after Stripe reports an active
+subscription, marks a paid conversion, and owner accounts are excluded from it.
+
 ## Sample data / test
 
 ```bash
