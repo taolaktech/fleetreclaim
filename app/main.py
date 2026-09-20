@@ -2,15 +2,16 @@
 
 import csv
 import io
+import mimetypes
 import uuid
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
-from PIL import Image, ImageDraw, ImageFont
-from pydantic import BaseModel
+from PIL import Image, ImageDraw
+from pydantic import BaseModel, Field
 
 from .matching import match
 from .parsers import parse_tolls, parse_trips
@@ -18,11 +19,12 @@ from .parsers import parse_tolls, parse_trips
 app = FastAPI(title="Toll ↔ Turo matcher")
 STATIC = Path(__file__).resolve().parent.parent / "static"
 
-# Rendered bill pages from recent uploads, so a trip's rows can be cropped out of
-# the original document. Keyed by parse id -> filename -> page images.
+# Bills exactly as uploaded, so a trip's evidence can be viewed in the browser.
+# Keyed by parse id -> filename -> file bytes.
+UPLOADS: OrderedDict[str, dict[str, bytes]] = OrderedDict()
+# PDFs and scans rendered to page images, so every browser can display them.
 PAGES: OrderedDict[str, dict[str, list[Image.Image]]] = OrderedDict()
-PAGE_CACHE_SIZE = 5
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+UPLOAD_CACHE_SIZE = 5
 
 
 class CropItem(BaseModel):
@@ -33,10 +35,7 @@ class CropItem(BaseModel):
 
 class CropRequest(BaseModel):
     parse_id: str
-    title: str = ""
-    subtitle: str = ""
-    items: list[CropItem] = []
-    lines: list[str] = []      # rendered instead when the bill has no locatable rows
+    items: list[CropItem] = Field(default_factory=list)
 
 
 class MatchRequest(BaseModel):
@@ -63,14 +62,17 @@ async def parse(
     tolls: list[dict[str, Any]] = []
     texts: dict[str, str] = {}
     parse_id = uuid.uuid4().hex
+    uploads: dict[str, bytes] = {}
     pages: dict[str, list[Image.Image]] = {}
     for upload in toll_files:
         name = upload.filename or "bill"
+        data = await upload.read()
         try:
-            parsed, document = parse_tolls(name, await upload.read(), known_plates)
+            parsed, document = parse_tolls(name, data, known_plates)
         except Exception as exc:  # surface parse failures instead of a 500 page
             raise HTTPException(status_code=400, detail=f"Could not read {name}: {exc}") from exc
         texts[name] = document.text
+        uploads[name] = data
         pages[name] = document.pages
         for toll in parsed:
             row = toll.dict()
@@ -78,8 +80,10 @@ async def parse(
             row["parse_id"] = parse_id
             tolls.append(row)
 
+    UPLOADS[parse_id] = uploads
     PAGES[parse_id] = pages
-    while len(PAGES) > PAGE_CACHE_SIZE:
+    while len(UPLOADS) > UPLOAD_CACHE_SIZE:
+        UPLOADS.popitem(last=False)
         PAGES.popitem(last=False)
 
     return {
@@ -88,43 +92,38 @@ async def parse(
         "trips": [t.dict() for t in trips],
         "raw_text": texts,
         "plates": sorted(known_plates),
+        "page_counts": {name: len(images) for name, images in pages.items()},
     }
-
-
-def _font(size: int) -> ImageFont.ImageFont:
-    try:
-        return ImageFont.truetype(FONT_PATH, size)
-    except OSError:
-        return ImageFont.load_default()
-
-
-def _render_lines(lines: list[str]) -> Image.Image:
-    """Draw plain bill lines as an image, for bills with no page layout (CSV/text)."""
-    font = _font(22)
-    pad, step = 12, 34
-    measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    width = max(int(measure.textlength(line, font=font)) for line in lines) + pad * 2
-    sheet = Image.new("RGB", (width, step * len(lines) + pad * 2), "white")
-    draw = ImageDraw.Draw(sheet)
-    for index, line in enumerate(lines):
-        draw.text((pad, pad + index * step), line, fill="black", font=font)
-    return sheet
 
 
 @app.get("/api/page")
 def bill_page(parse_id: str, source: str, page: int) -> Response:
-    """One rendered page of an uploaded bill, for previewing the raw document."""
-    pages = (PAGES.get(parse_id) or {}).get(source) or []
-    if not 0 <= page < len(pages):
-        raise HTTPException(status_code=404, detail="That bill page is no longer in memory.")
+    """One page of an uploaded bill, rendered to PNG so any browser can show it."""
+    images = (PAGES.get(parse_id) or {}).get(source) or []
+    if not 0 <= page < len(images):
+        raise HTTPException(status_code=404, detail="Re-run Parse files to view the bill.")
     buffer = io.BytesIO()
-    pages[page].save(buffer, format="PNG")
+    images[page].save(buffer, format="PNG")
     return Response(content=buffer.getvalue(), media_type="image/png")
+
+
+@app.get("/api/source")
+def bill_file(parse_id: str, source: str) -> Response:
+    """A bill exactly as uploaded, so the browser can display the original document."""
+    data = (UPLOADS.get(parse_id) or {}).get(source)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Re-run Parse files to view the bill.")
+    media_type = mimetypes.guess_type(source)[0] or "application/octet-stream"
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{Path(source).name}"'},
+    )
 
 
 @app.post("/api/crop")
 def crop(request: CropRequest) -> Response:
-    """Stack this trip's rows from the original bill into one screenshot-ready PNG."""
+    """Stack this trip's bill rows into one screenshot-ready PNG."""
     pages = PAGES.get(request.parse_id)
     if pages is None:
         raise HTTPException(status_code=404, detail="Re-run Parse files to rebuild bill images.")
@@ -139,37 +138,19 @@ def crop(request: CropRequest) -> Response:
         top, bottom = item.box[1], item.box[3]
         crops.append(
             page_image.crop(
-                (
-                    0,
-                    max(0, top - pad),
-                    page_image.width,
-                    min(page_image.height, bottom + pad),
-                )
+                (0, max(0, top - pad), page_image.width, min(page_image.height, bottom + pad))
             )
         )
     if not crops:
-        if not request.lines:
-            raise HTTPException(status_code=404, detail="No bill rows available for this trip.")
-        crops = [_render_lines(request.lines)]
+        raise HTTPException(status_code=404, detail="No bill rows available for this trip.")
 
     gap, margin = 10, 16
-    head = 52 + (30 if request.subtitle else 0) if request.title else 0
     width = max(crop_image.width for crop_image in crops) + margin * 2
-    height = (
-        head
-        + sum(crop_image.height for crop_image in crops)
-        + gap * (len(crops) - 1)
-        + margin * 2
-    )
+    height = sum(c.height for c in crops) + gap * (len(crops) - 1) + margin * 2
 
     sheet = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(sheet)
-    if request.title:
-        draw.text((margin, margin), request.title, fill="black", font=_font(30))
-        if request.subtitle:
-            draw.text((margin, margin + 38), request.subtitle, fill="#444444", font=_font(22))
-
-    y = head + margin
+    y = margin
     for index, crop_image in enumerate(crops):
         sheet.paste(crop_image, (margin, y))
         y += crop_image.height

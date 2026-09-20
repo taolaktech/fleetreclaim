@@ -36,6 +36,14 @@ def write_trips() -> None:
     pd.DataFrame(TRIPS[1:], columns=TRIPS[0]).to_excel(HERE / "turo_trips.xlsx", index=False)
 
 
+def write_csv_bill() -> None:
+    """A bill with no page layout, to exercise the 'show the upload' viewer."""
+    with (HERE / "toll_bill.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["DATE", "TIME", "LICENSE PLATE", "TOLL LOCATION", "AMOUNT"])
+        writer.writerows(ROWS)
+
+
 def render_bill() -> Image.Image:
     image = Image.new("RGB", (1400, 1000), "white")
     draw = ImageDraw.Draw(image)
@@ -60,6 +68,7 @@ def render_bill() -> Image.Image:
 
 def main() -> None:
     write_trips()
+    write_csv_bill()
     bill = render_bill()
     bill.save(HERE / "toll_bill.png")
     bill.save(HERE / "toll_bill.pdf", "PDF", resolution=150)

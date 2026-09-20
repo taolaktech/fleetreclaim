@@ -39,6 +39,10 @@
   .modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; width:min(900px,100%); }
   .modal h3 { margin:0 0 4px; font-size:16px; }
   .modal .cards { margin:14px 0; }
+  .bill { margin-top:14px; display:grid; gap:12px; }
+  .bill img { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  .bill iframe { width:100%; height:70vh; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  .bill pre { max-height:70vh; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   details summary { cursor:pointer; color:var(--muted); }
   pre { white-space:pre-wrap; background:#0d1017; padding:10px; border-radius:6px; max-height:300px; overflow:auto; font-size:12px; }
@@ -134,13 +138,23 @@
     </div>
   </div>
 
+  <div id="billModal" class="backdrop hidden">
+    <div class="modal">
+      <div class="row" style="justify-content:space-between; align-items:flex-start">
+        <div id="billHead"></div>
+        <button id="billClose" class="secondary">Close</button>
+      </div>
+      <div id="billBody" class="bill"></div>
+    </div>
+  </div>
+
   <section id="rawSection" class="hidden">
     <details><summary>Raw extracted text (debug)</summary><pre id="rawText"></pre></details>
   </section>
 </main>
 
 <script>
-let tolls = [], trips = [], lastResult = null, parseId = '';
+let tolls = [], trips = [], lastResult = null, parseId = '', pageCounts = {};
 const $ = id => document.getElementById(id);
 const money = n => '$' + Number(n || 0).toFixed(2);
 
@@ -165,6 +179,7 @@ $('parseBtn').onclick = async () => {
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
     const data = await res.json();
     parseId = data.parse_id;
+    pageCounts = data.page_counts || {};
     tolls = data.tolls.map(t => ({ ...t, ignored: false }));
     trips = data.trips;
     $('parseStatus').textContent = `${tolls.length} toll line items, ${trips.length} trips.`;
@@ -302,35 +317,60 @@ function downloadBlob(name, blob) {
 const download = (name, text) =>
   downloadBlob(name, new Blob([text], { type: 'text/csv' }));
 
-/** What of the original bill we can show for a trip: located rows, else raw lines. */
-function billSource(trip, rows) {
-  const items = tollsOf(trip.trip_id, rows);
-  return {
-    items: items
-      .filter(row => row.box && row.page >= 0)
-      .sort((a, b) => a.page - b.page || a.box[1] - b.box[1])
-      .map(row => ({ source: row.source, page: row.page, box: row.box })),
-    lines: items.map(row => row.raw || '').filter(Boolean),
-    sources: [...new Set(items.map(row => row.source))],
-  };
-}
+const escapeHtml = s => String(s ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+const billQuery = source =>
+  `parse_id=${encodeURIComponent(parseId)}&source=${encodeURIComponent(source)}`;
+const sourceUrl = source => `/api/source?${billQuery(source)}`;
+
+const pageUrl = (source, page) => `/api/page?${billQuery(source)}&page=${page}`;
+
+/** Bill rows for a trip that can be cropped out of the original document. */
+const cropItems = (trip, rows) => tollsOf(trip.trip_id, rows)
+  .filter(row => row.box && row.page >= 0)
+  .sort((a, b) => a.page - b.page || a.box[1] - b.box[1])
+  .map(row => ({ source: row.source, page: row.page, box: row.box }));
 
 /** Crop this trip's rows out of the original bill, stacked into one PNG. */
-async function tripPng(trip, rows) {
-  const { items, lines } = billSource(trip, rows);
-  if (!items.length && !lines.length) {
-    alert('Nothing from the uploaded bill is available for this trip.');
-    return;
-  }
+async function tripPng(trip, items) {
   const res = await fetch('/api/crop', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ parse_id: parseId, items, lines }),
+    body: JSON.stringify({ parse_id: parseId, items }),
   });
   if (!res.ok) {
     alert((await res.json().catch(() => ({}))).detail || 'Could not build the image.');
     return;
   }
   downloadBlob(`tolls-${trip.trip_id}.png`, await res.blob());
+}
+
+/** Bills with no line items to crop: show the upload itself — image, PDF or text. */
+async function openBillModal(trip, rows) {
+  const sources = [...new Set(tollsOf(trip.trip_id, rows).map(row => row.source))];
+  $('billHead').innerHTML =
+    `<h3>Uploaded bill — trip ${escapeHtml(trip.trip_id)}</h3>` +
+    `<div class="muted">${escapeHtml(trip.guest)} · ${escapeHtml(sources.join(', ') || 'no file')}` +
+    ' · no line-item rows to crop, showing the file as uploaded</div>';
+  const body = $('billBody');
+  body.innerHTML = '<div class="muted">Loading…</div>';
+  $('billModal').classList.remove('hidden');
+
+  const blocks = await Promise.all(sources.map(async source => {
+    // PDFs and scans are shown as their rendered pages, which every browser displays.
+    const count = pageCounts[source] || 0;
+    if (count) {
+      return Array.from({ length: count }, (_, page) =>
+        `<img src="${pageUrl(source, page)}" alt="${escapeHtml(source)} page ${page + 1}" />`).join('') +
+        `<a href="${sourceUrl(source)}" target="_blank">Open ${escapeHtml(source)}</a>`;
+    }
+    const res = await fetch(sourceUrl(source));
+    if (!res.ok)
+      return `<div class="muted">${escapeHtml(source)}: re-run Parse files to view it.</div>`;
+    return `<pre>${escapeHtml(await res.text())}</pre>`;
+  }));
+  body.innerHTML = blocks.join('') ||
+    '<div class="muted">No uploaded file is linked to this trip.</div>';
 }
 
 const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -371,9 +411,14 @@ function openTripModal(trip, rows) {
   $('tripModal').classList.remove('hidden');
 }
 
-const closeModal = () => $('tripModal').classList.add('hidden');
+const closeModal = () => {
+  $('tripModal').classList.add('hidden');
+  $('billModal').classList.add('hidden');
+};
 $('modalClose').onclick = closeModal;
+$('billClose').onclick = closeModal;
 $('tripModal').onclick = e => { if (e.target.id === 'tripModal') closeModal(); };
+$('billModal').onclick = e => { if (e.target.id === 'billModal') closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 function renderResult(r) {
@@ -390,7 +435,7 @@ function renderResult(r) {
     '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Tolls</th><th>Toll total</th><th>Charge guest</th></tr>' +
     (r.trips.length ? r.trips.map(t => `
       <tr><td>${t.trip_id}</td>
-      <td>${t.guest} <button type="button" class="toll-link" data-png="${t.trip_id}">PNG</button></td>
+      <td>${t.guest} <button type="button" class="toll-link" data-bill="${t.trip_id}">bill</button></td>
       <td>${t.vehicle}</td><td>${t.plate}</td>
       <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
       <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
@@ -398,10 +443,12 @@ function renderResult(r) {
       : '<tr><td colspan="8" class="muted">No matches yet.</td></tr>');
 
   $('chargeTable').onclick = e => {
-    const { trip: openId, png: pngId } = e.target.dataset;
-    const trip = r.trips.find(t => String(t.trip_id) === (openId || pngId));
+    const { trip: openId, bill: billId } = e.target.dataset;
+    const trip = r.trips.find(t => String(t.trip_id) === (openId || billId));
     if (!trip) return;
-    openId ? openTripModal(trip, r.rows) : tripPng(trip, r.rows);
+    if (openId) return openTripModal(trip, r.rows);
+    const items = cropItems(trip, r.rows);
+    items.length ? tripPng(trip, items) : openBillModal(trip, r.rows);
   };
 
   // The detail table has its own plate/status filters on top of the section filters.
