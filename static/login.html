@@ -3,26 +3,38 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Sign in — Tolls/tickets ↔ trips matcher</title>
+<title>Sign in — FleetReclaim</title>
 <style>
-  :root { --bg:#0f1115; --panel:#171a21; --line:#272b35; --text:#e7e9ee; --muted:#9aa3b2; --bad:#f85149; }
+  :root {
+    --color-primary:#003B2A; --color-background:#F5F7F8; --color-surface:#fff;
+    --color-border:#dde2e6; --color-border-strong:#c6ced4;
+    --color-text:#16211f; --color-text-muted:#66757e; --color-danger:#b42318;
+  }
   body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
-         font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
-  .box { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:32px; width:min(400px,92vw); text-align:center; }
-  h1 { font-size:18px; margin:0 0 6px; }
-  p { color:var(--muted); margin:0 0 22px; }
+         font:13px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+         background:var(--color-background); color:var(--color-text); }
+  .box { background:var(--color-surface); border:1px solid var(--color-border); border-radius:10px;
+         padding:30px; width:min(400px,92vw); text-align:center; box-shadow:0 8px 28px rgba(16,24,40,.08); }
+  .brand { display:flex; align-items:center; justify-content:center; gap:9px; font-weight:700; font-size:16px; margin-bottom:18px; }
+  .brand .mark { width:26px; height:26px; border-radius:6px; background:var(--color-primary); color:#fff;
+                 display:grid; place-items:center; font-size:12px; font-weight:800; }
+  h1 { font-size:16px; margin:0 0 6px; }
+  p { color:var(--color-text-muted); margin:0 0 20px; }
   button { display:flex; align-items:center; justify-content:center; gap:10px; width:100%;
-           font:600 14px/1 -apple-system,Segoe UI,Roboto,sans-serif; background:#fff; color:#3c4043;
-           border:0; border-radius:8px; padding:12px 16px; cursor:pointer; }
+           font:600 14px/1 -apple-system,"Segoe UI",Roboto,sans-serif; background:var(--color-surface); color:#3c4043;
+           border:1px solid var(--color-border-strong); border-radius:6px; padding:12px 16px; cursor:pointer; }
+  button:hover { background:#f7f9fa; }
   button:disabled { opacity:.6; cursor:not-allowed; }
-  .error { color:var(--bad); margin-top:14px; min-height:18px; }
-  .muted { color:var(--muted); font-size:12px; margin-top:18px; }
+  :focus-visible { outline:2px solid var(--color-primary); outline-offset:2px; }
+  .error { color:var(--color-danger); margin-top:14px; min-height:18px; }
+  .muted { color:var(--color-text-muted); font-size:12px; margin-top:18px; }
 </style>
 </head>
 <body>
   <div class="box">
-    <h1>Tolls/tickets ↔ trips matcher</h1>
-    <p>Sign in to match bills to trips.</p>
+    <div class="brand"><span class="mark" aria-hidden="true">FR</span> FleetReclaim</div>
+    <h1>Sign in to continue</h1>
+    <p>Match toll and violation charges to the guest who had the vehicle.</p>
     <button id="googleBtn">
       <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.17-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
       Continue with Google
