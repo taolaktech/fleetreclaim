@@ -23,6 +23,12 @@ def main() -> int:
         all_rows = rows()
         print("rows unfiltered:", all_rows, "| charge total:", page.locator("#cards .card").nth(5).inner_text().replace("\n", " "))
 
+        # R-1001 has $10 already billed by Turo, so only the shortfall is charged.
+        r1001 = page.locator("#chargeTable tr", has_text="R-1001").first
+        cells = r1001.locator("td").all_inner_texts()
+        print("R-1001 row:", cells)
+        assert cells[6] == "$16.35" and cells[7] == "$10.00" and cells[8] == "$6.35", cells
+
         page.select_option("#fPlate", "KJL4821")
         page.wait_for_timeout(300)
         print("plate filter rows:", rows(), "|", page.locator("#filterNote").inner_text())

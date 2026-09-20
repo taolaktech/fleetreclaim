@@ -157,6 +157,7 @@ def match(
                 "toll_count": 0,
                 "toll_total": 0.0,
                 "charge_total": 0.0,
+                "already_charged": round(float(trip.get("already_charged") or 0), 2),
                 "tolls": [],
             },
         )
@@ -174,6 +175,13 @@ def match(
             }
         )
 
+    # Turo may already have billed the guest for tolls; only the shortfall is owed.
+    for bucket in by_trip.values():
+        bucket["gross_charge"] = bucket["charge_total"]
+        bucket["charge_total"] = round(
+            max(0.0, bucket["gross_charge"] - bucket["already_charged"]), 2
+        )
+
     unmatched = [r for r in results if r["status"] == "unmatched"]
     ambiguous = [r for r in results if r["status"] == "ambiguous"]
     return {
@@ -185,7 +193,7 @@ def match(
             "unmatched": len(unmatched),
             "ambiguous": len(ambiguous),
             "toll_total": round(sum(float(r["amount"]) for r in results), 2),
-            "charge_total": round(sum(float(r["charge"]) for r in results), 2),
+            "charge_total": round(sum(t["charge_total"] for t in by_trip.values()), 2),
             "unmatched_total": round(sum(float(r["amount"]) for r in unmatched), 2),
         },
     }

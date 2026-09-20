@@ -75,6 +75,15 @@ def main() -> int:
     assert _line_to_toll(line, 0, "f", set(), ["golden gate bridge"]) is None
     assert _line_to_toll(line, 0, "f", set(), ["parking"]) is not None
 
+    # Turo already billed part of the tolls: only the shortfall is owed, never negative.
+    paid = {**TRIP, "already_charged": 1.0}
+    result = run([toll(time="12:00"), toll(time="13:00")], trips=(paid,))
+    trip_total = result["trips"][0]
+    assert trip_total["toll_total"] == 5.0 and trip_total["charge_total"] == 4.0, trip_total
+    assert result["summary"]["charge_total"] == 4.0
+    result = run([toll(time="12:00")], trips=({**TRIP, "already_charged": 99.0},))
+    assert result["trips"][0]["charge_total"] == 0.0
+
     # Markup and fee apply to every charged toll.
     result = match([toll(time="12:00")], [TRIP], markup_pct=10, fee_per_toll=1)
     assert result["rows"][0]["charge"] == 3.75, result["rows"][0]

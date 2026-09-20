@@ -212,17 +212,20 @@ function renderTolls() {
 
 function renderTrips() {
   $('tripCount').textContent = `(${trips.length})`;
-  const head = '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th></tr>';
+  const head = '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th><th>Tolls &amp; tickets charged by Turo</th></tr>';
   $('tripTable').innerHTML = head + trips.map((t, i) => `
     <tr>
       <td>${t.trip_id}</td><td>${t.guest}</td><td>${t.vehicle}</td>
       <td><input type="text" data-i="${i}" data-f="plate" value="${t.plate || ''}" size="8" /></td>
       <td>${t.start}</td><td>${t.end}</td>
+      <td><input type="number" step="0.01" data-i="${i}" data-f="already_charged" value="${t.already_charged || 0}" size="6" /></td>
     </tr>`).join('');
   $('tripTable').oninput = e => {
     const { i, f } = e.target.dataset;
     if (i === undefined) return;
-    trips[i][f] = e.target.value.toUpperCase();
+    trips[i][f] = f === 'already_charged'
+      ? parseFloat(e.target.value) || 0
+      : e.target.value.toUpperCase();
     runMatch();
   };
 }
@@ -270,11 +273,16 @@ function filtered() {
   for (const row of rows) {
     if (row.status === 'unmatched') continue;
     const t = row.trip;
-    if (!byTrip.has(t.trip_id)) byTrip.set(t.trip_id, { ...t, toll_count: 0, toll_total: 0, charge_total: 0 });
+    if (!byTrip.has(t.trip_id)) byTrip.set(t.trip_id, {
+      ...t, toll_count: 0, toll_total: 0, gross_charge: 0, charge_total: 0,
+      already_charged: Number(t.already_charged || 0),
+    });
     const bucket = byTrip.get(t.trip_id);
     bucket.toll_count += 1;
     bucket.toll_total = +(bucket.toll_total + Number(row.amount)).toFixed(2);
-    bucket.charge_total = +(bucket.charge_total + Number(row.charge)).toFixed(2);
+    bucket.gross_charge = +(bucket.gross_charge + Number(row.charge)).toFixed(2);
+    // Turo already billed part of this trip's tolls; only the shortfall is owed.
+    bucket.charge_total = +Math.max(0, bucket.gross_charge - bucket.already_charged).toFixed(2);
   }
   const sum = (list, key) => +list.reduce((acc, r) => acc + Number(r[key] || 0), 0).toFixed(2);
   const unmatched = rows.filter(r => r.status === 'unmatched');
@@ -288,7 +296,7 @@ function filtered() {
       ambiguous: rows.filter(r => r.status === 'ambiguous').length,
       unmatched: unmatched.length,
       toll_total: sum(rows, 'amount'),
-      charge_total: sum(rows, 'charge'),
+      charge_total: sum([...byTrip.values()], 'charge_total'),
       unmatched_total: sum(unmatched, 'amount'),
     },
   };
@@ -356,9 +364,9 @@ const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
 function tripCsv(trip, rows) {
   const items = tollsOf(trip.trip_id, rows);
   const lines = [
-    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','charge_total'].join(','),
+    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','turo_charged','charge_total'].join(','),
     [trip.trip_id, trip.guest, trip.vehicle, trip.plate, trip.start, trip.end,
-     items.length, trip.toll_total, trip.charge_total].map(csvCell).join(','),
+     items.length, trip.toll_total, trip.already_charged || 0, trip.charge_total].map(csvCell).join(','),
     '',
     ['status','matched_on','date','time','plate','location','amount','charge'].join(','),
     ...items.map(row => [row.status, row.basis || '', row.date, row.time || '', row.plate || '',
@@ -377,6 +385,7 @@ function openTripModal(trip, rows) {
   $('modalCards').innerHTML = `
     <div class="card"><span class="muted">Tolls</span><b>${items.length}</b></div>
     <div class="card"><span class="muted">Toll total</span><b>${money(trip.toll_total)}</b></div>
+    <div class="card"><span class="muted">Already charged by Turo</span><b>${money(trip.already_charged)}</b></div>
     <div class="card"><span class="muted">Charge guest</span><b>${money(trip.charge_total)}</b></div>`;
   $('modalTable').innerHTML =
     '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Charge</th></tr>' +
@@ -412,15 +421,16 @@ function renderResult(r) {
     <div class="card"><span class="muted">Charge total</span><b>${money(s.charge_total)}</b></div>`;
 
   $('chargeTable').innerHTML =
-    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Tolls</th><th>Toll total</th><th>Charge guest</th></tr>' +
+    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Tolls</th><th>Toll total</th><th>Turo charged</th><th>Charge guest</th></tr>' +
     (r.trips.length ? r.trips.map(t => `
       <tr><td>${t.trip_id}</td>
       <td>${t.guest} <button type="button" class="toll-link" data-png="${t.trip_id}">bill</button></td>
       <td>${t.vehicle}</td><td>${t.plate}</td>
       <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
       <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
-      <td>${money(t.toll_total)}</td><td><b>${money(t.charge_total)}</b></td></tr>`).join('')
-      : '<tr><td colspan="8" class="muted">No matches yet.</td></tr>');
+      <td>${money(t.toll_total)}</td><td class="muted">${money(t.already_charged)}</td>
+      <td><b>${money(t.charge_total)}</b></td></tr>`).join('')
+      : '<tr><td colspan="9" class="muted">No matches yet.</td></tr>');
 
   $('chargeTable').onclick = e => {
     const { trip: openId, png: pngId } = e.target.dataset;
@@ -461,8 +471,8 @@ $('exportBtn').onclick = () => {
       row.trip ? row.trip.vehicle : '', row.trip ? row.trip.start : '', row.trip ? row.trip.end : ''].map(cell).join(',')),
     '',
     'TRIP TOTALS',
-    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','charge_total'].join(','),
-    ...r.trips.map(t => [t.trip_id, t.guest, t.vehicle, t.plate, t.start, t.end, t.toll_count, t.toll_total, t.charge_total].map(cell).join(',')),
+    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','turo_charged','charge_total'].join(','),
+    ...r.trips.map(t => [t.trip_id, t.guest, t.vehicle, t.plate, t.start, t.end, t.toll_count, t.toll_total, t.already_charged || 0, t.charge_total].map(cell).join(',')),
   ];
   download('toll-charges.csv', lines.join('\n'));
 };

@@ -80,6 +80,7 @@ class Trip:
     start: str         # ISO yyyy-mm-ddTHH:MM or yyyy-mm-dd
     end: str
     raw: dict[str, Any]
+    already_charged: float = 0.0   # Turo's own "Tolls & tickets" charge for the trip
 
     def dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -408,6 +409,19 @@ def _to_iso(value: Any) -> str:
     return parsed.strftime("%Y-%m-%dT00:00")
 
 
+def _to_amount(value: Any) -> float:
+    """Read a money cell such as "$12.50", "(3.00)" or 12.5 as a positive float."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return abs(round(float(value), 2))
+    text = re.sub(r"[^0-9.\-]", "", str(value))
+    try:
+        return abs(round(float(text), 2))
+    except ValueError:
+        return 0.0
+
+
 def _clean_plate(value: str) -> str:
     plate = value.strip().upper().replace(" ", "").replace("-", "")
     return "" if plate in {"NAN", "NONE"} else plate
@@ -437,6 +451,7 @@ def parse_trips(filename: str, data: bytes) -> list[Trip]:
     vehicle_col = _pick(columns, ("vehicle",), ("car",), ("model",), ("listing",))
     guest_col = _pick(columns, ("guest",), ("renter",), ("customer",), ("driver",))
     id_col = _pick(columns, ("reservation",), ("trip", "id"), ("confirmation",))
+    charged_col = _pick(columns, ("toll", "ticket"), ("toll",))
 
     trips: list[Trip] = []
     for index, row in frame.iterrows():
@@ -458,6 +473,7 @@ def parse_trips(filename: str, data: bytes) -> list[Trip]:
                 start=start,
                 end=end or start,
                 raw={k: ("" if pd.isna(v) else str(v)) for k, v in row.items()},
+                already_charged=_to_amount(row.get(charged_col)) if charged_col else 0.0,
             )
         )
     return trips
