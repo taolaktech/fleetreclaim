@@ -175,6 +175,26 @@ def match(
             }
         )
 
+    # Trips Turo already collected on stay listed even with no toll of their own,
+    # so the amounts Turo charged can still be checked.
+    for trip in trips:
+        already = round(float(trip.get("already_charged") or 0), 2)
+        if already <= 0 or trip["trip_id"] in by_trip:
+            continue
+        by_trip[trip["trip_id"]] = {
+            "trip_id": trip["trip_id"],
+            "guest": trip["guest"],
+            "vehicle": trip["vehicle"],
+            "plate": trip["plate"],
+            "start": trip["start"],
+            "end": trip["end"],
+            "toll_count": 0,
+            "toll_total": 0.0,
+            "charge_total": 0.0,
+            "already_charged": already,
+            "tolls": [],
+        }
+
     # Turo may already have billed the guest for tolls; only the shortfall is owed.
     for bucket in by_trip.values():
         bucket["gross_charge"] = bucket["charge_total"]

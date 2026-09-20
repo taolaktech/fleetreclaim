@@ -52,7 +52,8 @@ def main() -> int:
     print(json.dumps(result["summary"], indent=2))
 
     # R-1001 carries $10 in Turo's "Tolls & tickets", so only $6.35 of its $16.35 is owed.
-    expected = {"R-1001": 6.35, "R-1002": 15.75, "R-1003": 4.50, "R-1004": 13.00}
+    # R-1005 matched no toll but Turo collected on it, so it is still listed at $0 owed.
+    expected = {"R-1001": 6.35, "R-1002": 15.75, "R-1003": 4.50, "R-1004": 13.00, "R-1005": 0.0}
     actual = {t["trip_id"]: t["charge_total"] for t in result["trips"]}
     assert actual == expected, f"expected {expected}, got {actual}"
     assert result["summary"]["unmatched"] == 1, result["summary"]

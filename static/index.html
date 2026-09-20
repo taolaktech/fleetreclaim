@@ -284,6 +284,19 @@ function filtered() {
     // Turo already billed part of this trip's tolls; only the shortfall is owed.
     bucket.charge_total = +Math.max(0, bucket.gross_charge - bucket.already_charged).toFixed(2);
   }
+  // Keep trips Turo already collected on visible even when no bill row matched them.
+  for (const t of trips) {
+    const already = Number(t.already_charged || 0);
+    if (already <= 0 || byTrip.has(t.trip_id)) continue;
+    const day = String(t.start).slice(0, 10), endDay = String(t.end || t.start).slice(0, 10);
+    if (from && endDay < from) continue;
+    if (to && day > to) continue;
+    if (vehicle && t.vehicle !== vehicle) continue;
+    if (plate && t.plate !== plate) continue;
+    if (tripQuery && !String(t.trip_id).toLowerCase().includes(tripQuery)) continue;
+    byTrip.set(t.trip_id, { ...t, toll_count: 0, toll_total: 0, gross_charge: 0, charge_total: 0, already_charged: already });
+  }
+
   const sum = (list, key) => +list.reduce((acc, r) => acc + Number(r[key] || 0), 0).toFixed(2);
   const unmatched = rows.filter(r => r.status === 'unmatched');
   $('filterNote').textContent = active ? `filtered: ${rows.length} of ${lastResult.rows.length} tolls` : '';

@@ -29,6 +29,11 @@ def main() -> int:
         print("R-1001 row:", cells)
         assert cells[6] == "$16.35" and cells[7] == "$10.00" and cells[8] == "$6.35", cells
 
+        # R-1005 matched no toll but Turo collected $4 on it: still listed, $0 owed.
+        paid = page.locator("#chargeTable tr", has_text="R-1005").first.locator("td").all_inner_texts()
+        print("R-1005 row:", paid)
+        assert paid[5] == "0" and paid[7] == "$4.00" and paid[8] == "$0.00", paid
+
         page.select_option("#fPlate", "KJL4821")
         page.wait_for_timeout(300)
         print("plate filter rows:", rows(), "|", page.locator("#filterNote").inner_text())
@@ -74,7 +79,7 @@ def main() -> int:
         print("detail plate filter:", plates)
         assert plates and set(plates) == {"KJL4821"}, plates
         trip_rows = page.locator("#chargeTable tr").count() - 1
-        assert trip_rows == 4, trip_rows  # detail filters must not touch the charge table
+        assert trip_rows == 5, trip_rows  # detail filters must not touch the charge table
 
         page.click("#clearFilters")
         count_link = page.locator("#chargeTable [data-trip]").first
