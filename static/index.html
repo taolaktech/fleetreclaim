@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FleetReclaim — expense resolution</title>
+<link rel="icon" href="/logo.png" type="image/png">
 <style>
   :root {
     --color-primary:#003B2A; --color-primary-hover:#00563d; --color-header:#003B2A;
@@ -32,10 +33,7 @@
     position:fixed; inset:0 0 auto 0; z-index:30;
   }
   .appbar .brand { display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:.2px; font-size:15px; color:#fff; }
-  .brand .mark {
-    width:24px; height:24px; border-radius:5px; background:#12a06a; color:#00291d;
-    display:grid; place-items:center; font-size:13px; font-weight:800;
-  }
+  .brand .mark { width:24px; height:24px; display:block; }
   .appbar .spacer { flex:1; }
   .iconbtn {
     background:transparent; border:1px solid transparent; color:inherit; border-radius:var(--radius);
@@ -207,7 +205,7 @@
 <body>
 <header class="appbar">
   <button id="navToggle" class="iconbtn" aria-label="Toggle navigation" aria-expanded="true">☰</button>
-  <div class="brand"><span class="mark" aria-hidden="true">FR</span> FleetReclaim</div>
+  <div class="brand"><img class="mark" src="/logo.png" alt=""> FleetReclaim</div>
   <div class="spacer"></div>
   <div id="userMenu" class="usermenu hidden"></div>
 </header>
