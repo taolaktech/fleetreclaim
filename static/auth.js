@@ -69,7 +69,7 @@ async function init() {
 
   state.authEnabled = !!config.auth_enabled;
   if (!state.authEnabled) {
-    state.user = { uid: 'dev-local', email: 'dev@localhost', displayName: 'Local dev', photoURL: '' };
+    state.user = { uid: 'dev-local', email: 'dev@example.com', displayName: 'Local dev', photoURL: '' };
     state.loading = false;
     notify();
     return snapshot();
