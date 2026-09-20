@@ -39,6 +39,8 @@
   .modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; width:min(900px,100%); }
   .modal h3 { margin:0 0 4px; font-size:16px; }
   .modal .cards { margin:14px 0; }
+  .bill { margin-top:14px; }
+  .bill img { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   details summary { cursor:pointer; color:var(--muted); }
   pre { white-space:pre-wrap; background:#0d1017; padding:10px; border-radius:6px; max-height:300px; overflow:auto; font-size:12px; }
@@ -125,13 +127,26 @@
       <div class="row" style="justify-content:space-between; align-items:flex-start">
         <div id="modalHead"></div>
         <div class="row">
-          <button id="modalPng" class="secondary">Download bill PNG</button>
+          <button id="modalPng" class="secondary">View bill rows</button>
           <button id="modalCsv" class="secondary">Download CSV</button>
           <button id="modalClose" class="secondary">Close</button>
         </div>
       </div>
       <div class="cards" id="modalCards"></div>
       <table id="modalTable"></table>
+    </div>
+  </div>
+
+  <div id="pngModal" class="backdrop hidden">
+    <div class="modal">
+      <div class="row" style="justify-content:space-between; align-items:flex-start">
+        <div id="pngHead"></div>
+        <div class="row">
+          <button id="pngDownload" class="secondary">Download PNG</button>
+          <button id="pngClose" class="secondary">Close</button>
+        </div>
+      </div>
+      <div id="pngBody" class="bill"></div>
     </div>
   </div>
 
@@ -311,7 +326,7 @@ async function tripPng(trip, rows) {
     .map(row => ({ source: row.source, page: row.page, box: row.box }));
   if (!items.length) {
     alert('No image rows for this trip — the bill was a CSV/text file, or these rows came from a table without positions.');
-    return;
+    return null;
   }
   const res = await fetch('/api/crop', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -319,9 +334,24 @@ async function tripPng(trip, rows) {
   });
   if (!res.ok) {
     alert((await res.json().catch(() => ({}))).detail || 'Could not build the image.');
-    return;
+    return null;
   }
-  downloadBlob(`tolls-${trip.trip_id}.png`, await res.blob());
+  return res.blob();
+}
+
+let pngUrl = '';
+
+/** Show the cropped bill rows in the app, with the download one click away. */
+async function openPngModal(trip, rows) {
+  const blob = await tripPng(trip, rows);
+  if (!blob) return;
+  if (pngUrl) URL.revokeObjectURL(pngUrl);
+  pngUrl = URL.createObjectURL(blob);
+  $('pngHead').innerHTML = `<h3>Bill rows — trip ${trip.trip_id}</h3>` +
+    `<div class="muted">${trip.guest} · ${money(trip.toll_total)} in tolls</div>`;
+  $('pngBody').innerHTML = `<img src="${pngUrl}" alt="bill rows for trip ${trip.trip_id}" />`;
+  $('pngDownload').onclick = () => downloadBlob(`tolls-${trip.trip_id}.png`, blob);
+  $('pngModal').classList.remove('hidden');
 }
 
 const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -359,13 +389,20 @@ function openTripModal(trip, rows) {
       <td>${row.plate || ''}</td><td>${row.location || ''}</td>
       <td>${money(row.amount)}</td><td>${money(row.charge)}</td></tr>`).join('');
   $('modalCsv').onclick = () => tripCsv(trip, rows);
-  $('modalPng').onclick = () => tripPng(trip, rows);
+  $('modalPng').onclick = () => openPngModal(trip, rows);
   $('tripModal').classList.remove('hidden');
 }
 
-const closeModal = () => $('tripModal').classList.add('hidden');
-$('modalClose').onclick = closeModal;
+const closePng = () => $('pngModal').classList.add('hidden');
+// Esc closes the image preview first, so the trip modal behind it stays open.
+const closeModal = () =>
+  $('pngModal').classList.contains('hidden')
+    ? $('tripModal').classList.add('hidden')
+    : closePng();
+$('modalClose').onclick = () => $('tripModal').classList.add('hidden');
+$('pngClose').onclick = closePng;
 $('tripModal').onclick = e => { if (e.target.id === 'tripModal') closeModal(); };
+$('pngModal').onclick = e => { if (e.target.id === 'pngModal') closePng(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 function renderResult(r) {
@@ -382,7 +419,7 @@ function renderResult(r) {
     '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Tolls</th><th>Toll total</th><th>Charge guest</th></tr>' +
     (r.trips.length ? r.trips.map(t => `
       <tr><td>${t.trip_id}</td>
-      <td>${t.guest} <button type="button" class="toll-link" data-png="${t.trip_id}">PNG</button></td>
+      <td>${t.guest} <button type="button" class="toll-link" data-png="${t.trip_id}">bill</button></td>
       <td>${t.vehicle}</td><td>${t.plate}</td>
       <td>${t.start.replace('T',' ')} → ${t.end.replace('T',' ')}</td>
       <td><button type="button" class="toll-link" data-trip="${t.trip_id}">${t.toll_count}</button></td>
@@ -393,7 +430,7 @@ function renderResult(r) {
     const { trip: openId, png: pngId } = e.target.dataset;
     const trip = r.trips.find(t => String(t.trip_id) === (openId || pngId));
     if (!trip) return;
-    openId ? openTripModal(trip, r.rows) : tripPng(trip, r.rows);
+    openId ? openTripModal(trip, r.rows) : openPngModal(trip, r.rows);
   };
 
   // The detail table has its own plate/status filters on top of the section filters.

@@ -82,20 +82,27 @@ def main() -> int:
         trip_csv = HERE / "trip_check.csv"
         trip_dl.value.save_as(str(trip_csv))
         print("per-trip csv:", trip_dl.value.suggested_filename, len(trip_csv.read_text().splitlines()), "lines")
-        with page.expect_download() as png_dl:
-            page.click("#modalPng")
-        trip_png = HERE / "trip_check.png"
-        png_dl.value.save_as(str(trip_png))
-        print("per-trip png:", png_dl.value.suggested_filename, trip_png.stat().st_size, "bytes")
-        assert trip_png.stat().st_size > 1_000
+        page.click("#modalPng")
+        page.wait_for_selector("#pngBody img", timeout=15_000)
+        print("bill preview from trip modal:", page.locator("#pngHead").inner_text().replace("\n", " | "))
+        page.keyboard.press("Escape")  # closes the preview, leaving the trip modal open
+        page.wait_for_selector("#pngModal.hidden", state="attached", timeout=5_000)
+        assert page.locator("#tripModal:not(.hidden)").count() == 1
         page.keyboard.press("Escape")
         page.wait_for_selector("#tripModal.hidden", state="attached", timeout=5_000)
 
-        with page.expect_download() as guest_dl:
-            page.click("#chargeTable [data-png] >> nth=0")
-        print("guest row png:", guest_dl.value.suggested_filename)
-        assert guest_dl.value.suggested_filename.endswith(".png")
-        assert page.locator("#tripModal.hidden").count() == 1
+        page.click("#chargeTable [data-png] >> nth=0")
+        page.wait_for_selector("#pngBody img", timeout=15_000)
+        print("guest row preview:", page.locator("#pngHead").inner_text().replace("\n", " | "))
+        assert page.locator("#tripModal.hidden").count() == 1  # guest link skips the trip modal
+        with page.expect_download() as png_dl:
+            page.click("#pngDownload")
+        trip_png = HERE / "trip_check.png"
+        png_dl.value.save_as(str(trip_png))
+        print("preview download:", png_dl.value.suggested_filename, trip_png.stat().st_size, "bytes")
+        assert trip_png.stat().st_size > 1_000
+        page.keyboard.press("Escape")
+        page.wait_for_selector("#pngModal.hidden", state="attached", timeout=5_000)
 
         with page.expect_download() as download:
             page.click("#exportBtn")
