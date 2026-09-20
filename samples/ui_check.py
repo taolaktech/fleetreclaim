@@ -111,6 +111,19 @@ def main() -> int:
         print("csv lines:", len(out.read_text().splitlines()))
 
         page.screenshot(path=str(HERE / "ui_filters.png"), full_page=True)
+
+        # user-defined exclusion phrase drops the matching bill lines at parse time
+        page.fill("#excludeList", "Golden Gate Bridge")
+        page.click("#parseBtn")
+        page.wait_for_function(
+            "() => document.getElementById('parseStatus').textContent.includes('toll line items')",
+            timeout=120_000,
+        )
+        excluded_rows = page.locator("#detailTable tr").count() - 1
+        print("after custom exclusion:", page.locator("#parseStatus").inner_text())
+        assert excluded_rows == all_rows - 1, (excluded_rows, all_rows)
+        assert "Golden Gate" not in page.locator("#detailTable").inner_text()
+
         page.close()
     print("UI check passed")
     return 0

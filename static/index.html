@@ -16,8 +16,8 @@
   h2 { font-size:14px; margin:0 0 12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
   label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
-  input, button { font:inherit; }
-  input[type=file], input[type=number], input[type=text], input[type=date], select { width:100%; background:#0d1017; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; }
+  input, button, textarea { font:inherit; }
+  input[type=file], input[type=number], input[type=text], input[type=date], select, textarea { width:100%; background:#0d1017; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; }
   button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:9px 16px; cursor:pointer; }
   button.secondary { background:#2a2f3a; }
   button:disabled { opacity:.5; cursor:not-allowed; }
@@ -64,6 +64,11 @@
         <label>Turo trips — CSV or XLSX</label>
         <input id="tripFile" type="file" accept=".csv,.xlsx,.xls" />
       </div>
+    </div>
+    <div style="margin-top:14px">
+      <label>Exclude bill lines containing (one phrase per line)</label>
+      <textarea id="excludeList" rows="3" placeholder="SUPPORT SERVICES, SYSTEM&#10;REBILL TAG STORE"></textarea>
+      <p class="muted">Case-insensitive. Tag-store rebills, card auto-charges and "SUPPORT SERVICES, SYSTEM" are always excluded.</p>
     </div>
     <div class="row" style="margin-top:14px">
       <button id="parseBtn">Parse files</button>
@@ -174,6 +179,9 @@ $('parseBtn').onclick = async () => {
   const form = new FormData();
   [...tollFiles].forEach(f => form.append('toll_files', f));
   form.append('trip_file', tripFile);
+  const exclude = $('excludeList').value;
+  form.append('exclude', exclude);
+  localStorage.setItem('tollExclusions', exclude);
   $('parseBtn').disabled = true;
   $('parseStatus').textContent = 'Reading files (OCR can take a few seconds)…';
   try {
@@ -191,6 +199,8 @@ $('parseBtn').onclick = async () => {
     $('parseStatus').textContent = 'Error: ' + e.message;
   } finally { $('parseBtn').disabled = false; }
 };
+
+$('excludeList').value = localStorage.getItem('tollExclusions') || '';
 
 ['buffer','markup','fee'].forEach(id => $(id).oninput = () => runMatch());
 

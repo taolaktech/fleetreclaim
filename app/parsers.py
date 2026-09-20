@@ -7,7 +7,7 @@ import tempfile
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import pandas as pd
 import pdfplumber
@@ -267,13 +267,29 @@ def _parse_plate(text: str, known_plates: set[str]) -> str:
     return ""
 
 
+def is_excluded(line: str, extra_phrases: Sequence[str] = ()) -> bool:
+    """True for statement lines that are account activity rather than tolls."""
+    if EXCLUDED_LINE.search(line):
+        return True
+    squashed = re.sub(r"\s+", " ", line).upper()
+    return any(
+        re.sub(r"\s+", " ", phrase).strip().upper() in squashed
+        for phrase in extra_phrases
+        if phrase.strip()
+    )
+
+
 def _line_to_toll(
-    page_line: PageLine, row_id: int, source: str, known_plates: set[str]
+    page_line: PageLine,
+    row_id: int,
+    source: str,
+    known_plates: set[str],
+    extra_exclusions: Sequence[str] = (),
 ) -> Toll | None:
     line = page_line.text
     amounts = MONEY.findall(line)
     date = _parse_date(line)
-    if not amounts or not date or EXCLUDED_LINE.search(line):
+    if not amounts or not date or is_excluded(line, extra_exclusions):
         return None
     amount = float(amounts[-1].replace(",", ""))
     if amount <= 0 or amount > 200:
@@ -327,7 +343,10 @@ def _with_wrapped_rows(lines: list[PageLine]) -> list[PageLine]:
 
 
 def parse_tolls(
-    filename: str, data: bytes, known_plates: set[str]
+    filename: str,
+    data: bytes,
+    known_plates: set[str],
+    extra_exclusions: Sequence[str] = (),
 ) -> tuple[list[Toll], Document]:
     document = extract_document(filename, data)
     lines = _with_wrapped_rows([line for line in document.lines if line.text.strip()])
@@ -340,7 +359,7 @@ def parse_tolls(
     tolls: list[Toll] = []
     seen: set[tuple[str, str, float, str]] = set()
     for line in lines:
-        toll = _line_to_toll(line, len(tolls), filename, known_plates)
+        toll = _line_to_toll(line, len(tolls), filename, known_plates, extra_exclusions)
         if toll is None:
             continue
         key = (toll.date, toll.time, toll.amount, toll.plate)

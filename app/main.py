@@ -55,9 +55,11 @@ def index() -> FileResponse:
 async def parse(
     toll_files: list[UploadFile] = File(...),
     trip_file: UploadFile = File(...),
+    exclude: str = Form(""),
 ) -> dict[str, Any]:
     trips = parse_trips(trip_file.filename or "trips.csv", await trip_file.read())
     known_plates = {t.plate for t in trips if t.plate}
+    exclusions = [phrase.strip() for phrase in exclude.splitlines() if phrase.strip()]
 
     tolls: list[dict[str, Any]] = []
     texts: dict[str, str] = {}
@@ -66,7 +68,7 @@ async def parse(
     for upload in toll_files:
         name = upload.filename or "bill"
         try:
-            parsed, document = parse_tolls(name, await upload.read(), known_plates)
+            parsed, document = parse_tolls(name, await upload.read(), known_plates, exclusions)
         except Exception as exc:  # surface parse failures instead of a 500 page
             raise HTTPException(status_code=400, detail=f"Could not read {name}: {exc}") from exc
         texts[name] = document.text
@@ -87,6 +89,7 @@ async def parse(
         "trips": [t.dict() for t in trips],
         "raw_text": texts,
         "plates": sorted(known_plates),
+        "exclusions": exclusions,
     }
 
 

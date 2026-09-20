@@ -70,6 +70,10 @@ def main() -> int:
     assert _line_to_toll(as_line("07/31/2026 10:29 CDT REBILL TAG STORE AutoCharge: MASTERCARD $80.00"), 0, "f", set()) is None
     assert _line_to_toll(as_line("07/29/2026 09:10 CDT SUPPORT SERVICES, SYSTEM FEE $1.00"), 0, "f", set()) is None
     assert _line_to_toll(as_line("07/30/2026 11:32 TJM5546 290-GILESMLWB $1.53"), 0, "f", set()) is not None
+    # user-supplied phrases exclude extra lines, case- and spacing-insensitively
+    line = as_line("07/30/2026 11:32 TJM5546 Golden  Gate Bridge SB $1.53")
+    assert _line_to_toll(line, 0, "f", set(), ["golden gate bridge"]) is None
+    assert _line_to_toll(line, 0, "f", set(), ["parking"]) is not None
 
     # Markup and fee apply to every charged toll.
     result = match([toll(time="12:00")], [TRIP], markup_pct=10, fee_per_toll=1)
