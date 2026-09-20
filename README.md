@@ -1,5 +1,29 @@
 # Tolls/tickets ↔ trips matcher
 
+                   YOUR APP
+                      │
+        ┌─────────────┴─────────────┐
+        │                           │
+        ▼                           ▼
+ Firebase Authentication          Stripe
+        │                           │
+ Google Login                 Subscription
+        │                           │
+ Gmail / Workspace            Payment status
+        │                           │
+        └────────── UID ────────────┘
+                      │
+                      ▼
+              Authenticated App
+                      │
+         ┌────────────┴─────────────┐
+         ▼                          ▼
+    Toll Resolution          Violation Resolution
+         │                          │
+         └────────────┬─────────────┘
+                      ▼
+               Evidence Package
+
 Upload a tolls/tickets bill (PDF or photo) plus a marketplace trip export (CSV/XLSX) and get,
 per trip, how much to charge the guest.
 
