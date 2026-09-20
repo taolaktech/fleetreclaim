@@ -486,12 +486,17 @@ $('navToggle').onclick = () => {
   }
 };
 $('scrim').onclick = closeDrawer;
+function syncNavToggle() {
+  const expanded = mobile()
+    ? document.body.classList.contains('nav-open')
+    : !document.body.classList.contains('nav-collapsed');
+  $('navToggle').setAttribute('aria-expanded', String(expanded));
+}
 window.addEventListener('resize', () => {
-  if (!mobile()) {
-    closeDrawer();
-    $('navToggle').setAttribute('aria-expanded', String(!document.body.classList.contains('nav-collapsed')));
-  }
+  if (!mobile()) closeDrawer();
+  syncNavToggle();
 });
+syncNavToggle();
 
 function toast(message, kind) {
   const el = document.createElement('div');
