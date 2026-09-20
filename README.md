@@ -17,7 +17,7 @@ how much to charge the guest.
    trips equally well are charged in full to the best-ranked one and flagged `ambiguous`;
    tolls outside every trip's dates, or whose plate contradicts every candidate trip's
    plate, stay `unmatched` and are charged to nobody. Statement lines that are not tolls
-   (tag-store rebills, card auto-charges) are dropped while parsing.
+   (tag-store rebills, card auto-charges, support-services system fees) are dropped while parsing.
 4. **Charge** — optional markup % and per-toll admin fee are applied; totals roll up per
    trip and export to CSV.
 

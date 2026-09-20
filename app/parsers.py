@@ -28,8 +28,11 @@ DATE_PATTERNS = [
 ]
 TIME = re.compile(r"\b(\d{1,2}:\d{2}(?::\d{2})?)\s*([AaPp]\.?[Mm]\.?)?\b")
 
-# Account activity that is not a toll: tag purchases and card auto-replenishments.
-EXCLUDED_LINE = re.compile(r"REBILL\s+TAG\s+STORE|AUTO\s?CHARGE|AUTO\s?REPLENISH", re.IGNORECASE)
+# Account activity that is not a toll: tag purchases, card auto-replenishments, fees.
+EXCLUDED_LINE = re.compile(
+    r"REBILL\s+TAG\s+STORE|AUTO\s?CHARGE|AUTO\s?REPLENISH|SUPPORT\s+SERVICES\W+\s*SYSTEM",
+    re.IGNORECASE,
+)
 
 # Words that look like plates but are column headers / agency names.
 PLATE_STOPWORDS = {

@@ -68,6 +68,7 @@ def main() -> int:
     # Account-activity lines are dropped before matching ever sees them.
     as_line = lambda text: PageLine(text, 0, (0, 0, 10, 10))
     assert _line_to_toll(as_line("07/31/2026 10:29 CDT REBILL TAG STORE AutoCharge: MASTERCARD $80.00"), 0, "f", set()) is None
+    assert _line_to_toll(as_line("07/29/2026 09:10 CDT SUPPORT SERVICES, SYSTEM FEE $1.00"), 0, "f", set()) is None
     assert _line_to_toll(as_line("07/30/2026 11:32 TJM5546 290-GILESMLWB $1.53"), 0, "f", set()) is not None
 
     # Markup and fee apply to every charged toll.
