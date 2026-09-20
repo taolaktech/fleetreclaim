@@ -63,6 +63,7 @@
       <div>
         <label>Turo trips — CSV or XLSX</label>
         <input id="tripFile" type="file" accept=".csv,.xlsx,.xls" />
+        <p class="muted" id="tripCacheNote" style="margin:6px 0 0"></p>
       </div>
     </div>
     <div style="margin-top:14px">
@@ -168,8 +169,56 @@ function settings() {
   return { buffer_hours: 2, markup_pct: 0, fee_per_toll: 0 };
 }
 
+// The trip export rarely changes while resolving a bill, so keep it for the
+// browser session (sessionStorage clears itself when the browser closes).
+const TRIP_CACHE = 'turoTripFile';
+let cachedTrip = null;
+
+try { cachedTrip = JSON.parse(sessionStorage.getItem(TRIP_CACHE) || 'null'); } catch (e) { cachedTrip = null; }
+
+function cachedTripFile() {
+  if (!cachedTrip) return null;
+  const bin = atob(cachedTrip.data);
+  const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+  return new File([bytes], cachedTrip.name, { type: cachedTrip.type });
+}
+
+function renderTripCache() {
+  if (!cachedTrip) { $('tripCacheNote').textContent = ''; return; }
+  const added = new Date(cachedTrip.added).toLocaleString();
+  $('tripCacheNote').innerHTML =
+    `Using <b>${cachedTrip.name}</b> · added ${added} · ` +
+    '<button type="button" class="toll-link" id="tripRefresh">upload a new file</button>';
+  $('tripRefresh').onclick = () => {
+    cachedTrip = null;
+    sessionStorage.removeItem(TRIP_CACHE);
+    $('tripFile').value = '';
+    renderTripCache();
+    $('tripFile').click();
+  };
+}
+
+$('tripFile').onchange = () => {
+  const file = $('tripFile').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    cachedTrip = {
+      name: file.name,
+      type: file.type,
+      added: new Date().toISOString(),
+      data: String(reader.result).split(',')[1],
+    };
+    try { sessionStorage.setItem(TRIP_CACHE, JSON.stringify(cachedTrip)); } catch (e) { /* too big to keep; still usable now */ }
+    renderTripCache();
+  };
+  reader.readAsDataURL(file);
+};
+
+renderTripCache();
+
 $('parseBtn').onclick = async () => {
-  const tollFiles = $('tollFiles').files, tripFile = $('tripFile').files[0];
+  const tollFiles = $('tollFiles').files, tripFile = $('tripFile').files[0] || cachedTripFile();
   if (!tollFiles.length || !tripFile) { $('parseStatus').textContent = 'Pick both a tolls/tickets bill and a trip export.'; return; }
   const form = new FormData();
   [...tollFiles].forEach(f => form.append('toll_files', f));

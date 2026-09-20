@@ -156,6 +156,17 @@ def main() -> int:
         assert excluded_rows == all_rows - 1, (excluded_rows, all_rows)
         assert "Golden Gate" not in page.locator("#detailTable").inner_text()
 
+        # the trip export survives a reload, so only the bill needs re-picking
+        page.reload(wait_until="load")
+        note = page.locator("#tripCacheNote").inner_text()
+        print("cached trip file:", note)
+        assert "turo_trips.csv" in note, note
+        page.set_input_files("#tollFiles", str(HERE / "toll_bill.pdf"))
+        page.click("#parseBtn")
+        page.wait_for_selector("#chargeTable tr:nth-child(2)", timeout=120_000)
+        print("reparsed from cached trips:", page.locator("#parseStatus").inner_text())
+        assert "5 trips" in page.locator("#parseStatus").inner_text()
+
         page.close()
     print("UI check passed")
     return 0
