@@ -106,9 +106,7 @@ def _base_url(request: Request) -> str:
 @app.get("/api/billing/status")
 def billing_status(user: AuthUser = Depends(require_firebase_user)) -> dict[str, Any]:
     """Stripe is the source of truth, so this survives logout and new devices."""
-    if not billing.configured():
-        return {"billingEnabled": False, **billing.no_subscription()}
-    return {"billingEnabled": True, **billing.subscription_status(user)}
+    return {"billingEnabled": billing.configured(), **billing.entitlement(user)}
 
 
 @app.post("/api/billing/checkout")
@@ -117,23 +115,29 @@ def billing_checkout(
     request: Request,
     user: AuthUser = Depends(require_firebase_user),
 ) -> dict[str, str]:
+    billing.refuse_for_owner(user)
     return {"url": billing.create_checkout(user, body.plan, _base_url(request))}
 
 
 @app.post("/api/billing/cancel")
 def billing_cancel(user: AuthUser = Depends(require_firebase_user)) -> dict[str, Any]:
-    return {"billingEnabled": True, **billing.set_cancel_at_period_end(user, True)}
+    billing.refuse_for_owner(user)
+    billing.set_cancel_at_period_end(user, True)
+    return {"billingEnabled": True, **billing.entitlement(user)}
 
 
 @app.post("/api/billing/resume")
 def billing_resume(user: AuthUser = Depends(require_firebase_user)) -> dict[str, Any]:
-    return {"billingEnabled": True, **billing.set_cancel_at_period_end(user, False)}
+    billing.refuse_for_owner(user)
+    billing.set_cancel_at_period_end(user, False)
+    return {"billingEnabled": True, **billing.entitlement(user)}
 
 
 @app.post("/api/billing/portal")
 def billing_portal(
     request: Request, user: AuthUser = Depends(require_firebase_user)
 ) -> dict[str, str]:
+    billing.refuse_for_owner(user)
     return {"url": billing.create_portal_session(user, _base_url(request))}
 
 

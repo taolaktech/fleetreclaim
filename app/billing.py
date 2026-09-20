@@ -5,6 +5,11 @@ answers "has this user paid". The bridge between them is the Firebase uid, store
 on the Stripe customer as ``metadata.firebaseUid`` and looked up with the Stripe
 search API, so the same Google account resolves to the same customer on any
 device, after any sign-out, forever.
+
+Access is answered in one place, :func:`entitlement`. Firebase uids listed in the
+server-only ``OWNER_FIREBASE_UIDS`` are internal accounts: they sign in through
+Google like everyone else, and only their verified uid — never anything the
+browser sends — grants access without Stripe.
 """
 
 from __future__ import annotations
@@ -51,8 +56,23 @@ PLANS: dict[str, Plan] = {
 }
 
 
+OWNER_PLAN = "internal"
+OWNER_PLAN_NAME = "FleetReclaim Internal"
+
+
 def configured() -> bool:
     return bool(os.environ.get("STRIPE_SECRET_KEY"))
+
+
+def owner_uids() -> set[str]:
+    """Internal Firebase uids, from a server-only variable never sent anywhere."""
+    raw = os.environ.get("OWNER_FIREBASE_UIDS", "")
+    return {uid.strip() for uid in raw.split(",") if uid.strip()}
+
+
+def is_owner(user: AuthUser) -> bool:
+    """True only for a uid that Firebase Admin already verified."""
+    return bool(user.uid) and user.uid in owner_uids()
 
 
 def available_plans() -> list[dict[str, Any]]:
@@ -192,6 +212,45 @@ def subscription_status(user: AuthUser) -> dict[str, Any]:
     }
 
 
+def owner_state() -> dict[str, Any]:
+    """Access for an internal account: no Stripe customer, no subscription."""
+    return {
+        "hasSubscription": True,
+        "status": "active",
+        "isActive": True,
+        "inGrace": False,
+        "plan": OWNER_PLAN,
+        "planName": OWNER_PLAN_NAME,
+        "cancelAtPeriodEnd": False,
+        "currentPeriodEnd": None,
+        "plans": [],
+    }
+
+
+def entitlement(user: AuthUser) -> dict[str, Any]:
+    """The one answer to "what may this verified Firebase user do".
+
+    Owners are settled from the allowlist alone, so an internal account never
+    touches Stripe and never has a customer created for it.
+    """
+    if is_owner(user):
+        return {**owner_state(), "hasAccess": True, "isOwner": True, "source": "owner"}
+    state = no_subscription() if not configured() else subscription_status(user)
+    return {
+        **state,
+        "hasAccess": bool(state["isActive"] or state["inGrace"]),
+        "isOwner": False,
+        "source": "stripe",
+    }
+
+
+def refuse_for_owner(user: AuthUser) -> None:
+    if is_owner(user):
+        raise HTTPException(
+            status_code=403, detail="Internal accounts are not billed through Stripe."
+        )
+
+
 def no_subscription() -> dict[str, Any]:
     return {
         "hasSubscription": False,
@@ -327,8 +386,7 @@ def requires_subscription(feature: str):
         user = require_firebase_user(request)
         if feature not in gated_features() or not configured():
             return user
-        state = subscription_status(user)
-        if not (state["isActive"] or state["inGrace"]):
+        if not entitlement(user)["hasAccess"]:
             raise HTTPException(status_code=402, detail="This feature needs an active subscription.")
         return user
 

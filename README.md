@@ -132,6 +132,18 @@ Nothing is behind the paywall yet. `PAID_FEATURES=parse,evidence` turns on the
 `requires_subscription` gate for document processing and evidence images; the
 default empty value leaves every feature open to signed-in users.
 
+### Internal accounts
+
+`OWNER_FIREBASE_UIDS=uid_one,uid_two` (server-only) lists Firebase uids that get
+full access without Stripe. They sign in with Google like anyone else; the uid
+is only consulted after Firebase Admin has verified the ID token, so nothing the
+browser sends can grant it. Every access decision — billing status and each
+gated feature — goes through `billing.entitlement()`, which answers owners from
+the allowlist alone: no Stripe customer is created and no subscription is read.
+Their Billing page shows "FleetReclaim Internal / Active / Full access" with no
+Stripe controls, and the checkout, cancel, resume and portal endpoints return
+403 for them.
+
 ## Sample data / test
 
 ```bash

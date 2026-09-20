@@ -478,6 +478,16 @@ const STATUS_TEXT = {
 onBilling(b => {
   if (b.loading) { billingBody.innerHTML = '<p class="muted" style="margin:0">Loading billing…</p>'; return; }
   if (b.error) { billingBody.innerHTML = `<p style="margin:0;color:var(--color-danger)">${esc(b.error)}</p>`; return; }
+  if (b.isOwner) {
+    billingBody.innerHTML = `
+      <div class="cards" style="margin-bottom:14px">
+        <div class="card"><span>Plan</span><b style="font-size:15px">FleetReclaim Internal</b></div>
+        <div class="card"><span>Status</span><b style="font-size:15px">Active</b></div>
+        <div class="card"><span>Access</span><b style="font-size:15px">Full access</b></div>
+      </div>
+      <p class="muted" style="margin:0">This account is an internal FleetReclaim account and is not billed.</p>`;
+    return;
+  }
   if (!b.billingEnabled) {
     billingBody.innerHTML = '<p class="muted" style="margin:0">Billing is not switched on for this deployment.</p>';
     return;

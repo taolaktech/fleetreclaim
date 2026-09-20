@@ -140,7 +140,8 @@ class FakeStripe:
 
 
 def setup(**env) -> FakeStripe:
-    for key in [*ADMIN_ENV, *STRIPE_ENV, "DEV_AUTH_BYPASS", "PAID_FEATURES"]:
+    for key in [*ADMIN_ENV, *STRIPE_ENV, "DEV_AUTH_BYPASS", "PAID_FEATURES",
+                "OWNER_FIREBASE_UIDS"]:
         os.environ.pop(key, None)
     os.environ.update(env)
     fake = FakeStripe()
@@ -330,6 +331,78 @@ def test_status_endpoint_reports_disabled_billing_without_stripe_keys() -> None:
     setup(DEV_AUTH_BYPASS="1")
     body = TestClient(app).get("/api/billing/status").json()
     assert body["billingEnabled"] is False and body["isActive"] is False
+
+
+def test_owner_uids_get_access_without_touching_stripe() -> None:
+    setup(OWNER_FIREBASE_UIDS=f" {ALICE.uid} , other-owner ")
+    # No Stripe key at all: an owner must still be entitled.
+    state = billing.entitlement(ALICE)
+    assert state["isOwner"] is True and state["hasAccess"] is True
+    assert state["source"] == "owner" and state["plan"] == "internal"
+    assert state["status"] == "active" and state["cancelAtPeriodEnd"] is False
+    assert billing.entitlement(AuthUser(uid="other-owner"))["isOwner"] is True
+
+
+def test_owners_never_get_a_stripe_customer() -> None:
+    fake = setup(**STRIPE_ENV, OWNER_FIREBASE_UIDS=ALICE.uid)
+    billing.entitlement(ALICE)
+    assert fake.customers == [] and fake.idempotency_keys == []
+
+
+def test_non_owners_still_need_stripe() -> None:
+    fake = setup(**STRIPE_ENV, OWNER_FIREBASE_UIDS=ALICE.uid)
+    assert billing.entitlement(BOB)["hasAccess"] is False
+    fake.add_subscription(fake.add_customer(BOB).id, "active")
+    bob = billing.entitlement(BOB)
+    assert bob["hasAccess"] is True and bob["isOwner"] is False and bob["source"] == "stripe"
+
+
+def test_owner_access_cannot_be_claimed_by_the_browser() -> None:
+    setup(**STRIPE_ENV, DEV_AUTH_BYPASS="1", OWNER_FIREBASE_UIDS="uid-of-the-real-owner")
+    client = TestClient(app)
+    body = client.get("/api/billing/status").json()
+    assert body["isOwner"] is False and body["hasAccess"] is False
+    # Nothing in a request body may promote the caller.
+    spoofed = client.post(
+        "/api/billing/checkout",
+        json={"plan": "yearly", "isOwner": True, "uid": "uid-of-the-real-owner"},
+    )
+    assert spoofed.status_code == 200  # a normal checkout, not owner access
+    assert billing.entitlement(AuthUser(uid="dev-local"))["isOwner"] is False
+
+
+def test_owners_are_refused_stripe_billing_actions() -> None:
+    setup(**STRIPE_ENV, DEV_AUTH_BYPASS="1", OWNER_FIREBASE_UIDS="dev-local")
+    client = TestClient(app)
+    assert client.post("/api/billing/checkout", json={"plan": "yearly"}).status_code == 403
+    for path in ["/api/billing/cancel", "/api/billing/resume", "/api/billing/portal"]:
+        assert client.post(path).status_code == 403, path
+    assert client.get("/api/billing/status").json()["isOwner"] is True
+
+
+def test_gated_features_follow_the_entitlement_function() -> None:
+    fake = setup(**STRIPE_ENV, DEV_AUTH_BYPASS="1", PAID_FEATURES="evidence")
+    client = TestClient(app)
+    payload = {"parse_id": "missing", "trip_id": "R-1"}
+    assert client.post("/api/crop", json=payload).status_code == 402
+
+    os.environ["OWNER_FIREBASE_UIDS"] = "dev-local"
+    assert client.post("/api/crop", json=payload).status_code != 402
+    del os.environ["OWNER_FIREBASE_UIDS"]
+
+    fake.add_subscription(fake.add_customer(AuthUser(uid="dev-local", email="dev@example.com")).id,
+                          "active")
+    assert client.post("/api/crop", json=payload).status_code != 402
+
+
+def test_owner_uids_never_reach_the_browser() -> None:
+    setup(**ADMIN_ENV, **STRIPE_ENV, OWNER_FIREBASE_UIDS="uid-secret-owner")
+    client = TestClient(app)
+    assert "uid-secret-owner" not in client.get("/api/config").text
+    static = Path(__file__).resolve().parent.parent / "static"
+    for path in static.glob("*"):
+        if path.is_file():
+            assert "OWNER_FIREBASE_UIDS" not in path.read_text(errors="ignore"), path
 
 
 def test_no_stripe_secret_reaches_the_browser() -> None:
