@@ -1,5 +1,5 @@
 # Tolls/tickets ↔ trips matcher
-
+```
                    YOUR APP
                       │
         ┌─────────────┴─────────────┐
@@ -23,7 +23,7 @@
          └────────────┬─────────────┘
                       ▼
                Evidence Package
-
+```
 Upload a tolls/tickets bill (PDF or photo) plus a marketplace trip export (CSV/XLSX) and get,
 per trip, how much to charge the guest.
 
