@@ -48,7 +48,8 @@ class MatchRequest(BaseModel):
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(STATIC / "index.html")
+    # The UI changes often; never let a browser serve a stale copy.
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/parse")
