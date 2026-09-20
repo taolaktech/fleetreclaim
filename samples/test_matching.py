@@ -75,7 +75,7 @@ def main() -> int:
     assert _line_to_toll(line, 0, "f", set(), ["golden gate bridge"]) is None
     assert _line_to_toll(line, 0, "f", set(), ["parking"]) is not None
 
-    # Turo already billed part of the tolls: only the shortfall is owed, never negative.
+    # The marketplace already billed part of the tolls: only the shortfall is owed, never negative.
     paid = {**TRIP, "already_charged": 1.0}
     result = run([toll(time="12:00"), toll(time="13:00")], trips=(paid,))
     trip_total = result["trips"][0]

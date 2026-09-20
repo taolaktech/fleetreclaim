@@ -1,4 +1,4 @@
-"""Generate sample toll bill (PDF + PNG) and Turo trip export for testing."""
+"""Generate sample toll bill (PDF + PNG) and trip export for testing."""
 
 import csv
 from pathlib import Path
@@ -19,7 +19,7 @@ ROWS = [
     ("03/21/2026", "09:20 AM", "PLT9900", "Orlando SR-417", "3.25"),
 ]
 
-# Turo exports carry the plate inside the vehicle label rather than its own column.
+# Marketplace exports carry the plate inside the vehicle label rather than its own column.
 TRIPS = [
     ["Reservation ID", "Guest", "Vehicle", "Trip start", "Trip end", "Tolls & tickets"],
     ["R-1001", "Dana Reyes", "Taofeek's Tesla (TX #KJL4821)", "2026-03-01 15:00", "2026-03-03 11:00", "$10.00"],
@@ -31,9 +31,9 @@ TRIPS = [
 
 
 def write_trips() -> None:
-    with (HERE / "turo_trips.csv").open("w", newline="") as handle:
+    with (HERE / "trips.csv").open("w", newline="") as handle:
         csv.writer(handle).writerows(TRIPS)
-    pd.DataFrame(TRIPS[1:], columns=TRIPS[0]).to_excel(HERE / "turo_trips.xlsx", index=False)
+    pd.DataFrame(TRIPS[1:], columns=TRIPS[0]).to_excel(HERE / "trips.xlsx", index=False)
 
 
 def render_bill() -> Image.Image:

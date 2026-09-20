@@ -1,6 +1,6 @@
-# Tolls/tickets ↔ Turo matcher
+# Tolls/tickets ↔ trips matcher
 
-Upload a tolls/tickets bill (PDF or photo) plus a Turo trip export (CSV/XLSX) and get,
+Upload a tolls/tickets bill (PDF or photo) plus a marketplace trip export (CSV/XLSX) and get,
 per trip, how much to charge the guest.
 
 ## How it works
@@ -18,8 +18,8 @@ per trip, how much to charge the guest.
    tolls outside every trip's dates, or whose plate contradicts every candidate trip's
    plate, stay `unmatched` and are charged to nobody. Statement lines that are not tolls
    (tag-store rebills, card auto-charges, support-services system fees) are dropped while parsing.
-4. **Charge** — optional markup % and per-item admin fee are applied; anything Turo
-   already collected on the trip (its "Tolls & tickets" column) is subtracted, so only the
+4. **Charge** — optional markup % and per-item admin fee are applied; anything the
+   marketplace already collected on the trip (its "Tolls & tickets" column) is subtracted, so only the
    shortfall is owed. Totals roll up per trip and export to CSV.
 
 Everything parsed is editable in the browser, so OCR mistakes (plate `0` vs `O`, a wrong
@@ -36,6 +36,6 @@ python -m uvicorn app.main:app --port 8080
 ## Sample data / test
 
 ```bash
-python samples/make_samples.py   # writes a fake toll bill (PDF+PNG) and Turo CSV
+python samples/make_samples.py   # writes a fake toll bill (PDF+PNG) and trips CSV
 python samples/smoke_test.py     # end-to-end check against a running server
 ```

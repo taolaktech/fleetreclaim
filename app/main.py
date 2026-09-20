@@ -1,4 +1,4 @@
-"""Toll bill -> Turo trip matcher."""
+"""Toll bill -> trip matcher."""
 
 import csv
 import io
@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from .matching import match
 from .parsers import parse_tolls, parse_trips
 
-app = FastAPI(title="Toll ↔ Turo matcher")
+app = FastAPI(title="Tolls/tickets ↔ trips matcher")
 STATIC = Path(__file__).resolve().parent.parent / "static"
 
 # Rendered bill pages from recent uploads, so a trip's rows can be cropped out of

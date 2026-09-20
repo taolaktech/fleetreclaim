@@ -37,7 +37,7 @@ def main() -> int:
         f"{BASE}/api/parse",
         [
             ("toll_files", HERE / "toll_bill.pdf", "application/pdf"),
-            ("trip_file", HERE / "turo_trips.csv", "text/csv"),
+            ("trip_file", HERE / "trips.csv", "text/csv"),
         ],
     )
     result = post_json(
@@ -51,8 +51,8 @@ def main() -> int:
             print("REVIEW", row["status"], row["date"], row["plate"], row["amount"])
     print(json.dumps(result["summary"], indent=2))
 
-    # R-1001 carries $10 in Turo's "Tolls & tickets", so only $6.35 of its $16.35 is owed.
-    # R-1005 matched no toll but Turo collected on it, so it is still listed at $0 owed.
+    # R-1001 carries $10 in the marketplace's "Tolls & tickets", so only $6.35 of its $16.35 is owed.
+    # R-1005 matched no toll but the marketplace collected on it, so it is still listed at $0 owed.
     expected = {"R-1001": 6.35, "R-1002": 15.75, "R-1003": 4.50, "R-1004": 13.00, "R-1005": 0.0}
     actual = {t["trip_id"]: t["charge_total"] for t in result["trips"]}
     assert actual == expected, f"expected {expected}, got {actual}"

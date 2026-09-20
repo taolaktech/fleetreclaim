@@ -15,7 +15,7 @@ def main() -> int:
         page.goto("http://localhost:8080", wait_until="load")
         page.fill("#excludeList", "")  # a previous run may have saved exclusions
         page.set_input_files("#tollFiles", str(HERE / "toll_bill.pdf"))
-        page.set_input_files("#tripFile", str(HERE / "turo_trips.csv"))
+        page.set_input_files("#tripFile", str(HERE / "trips.csv"))
         page.click("#parseBtn")
         page.wait_for_selector("#chargeTable tr:nth-child(2)", timeout=120_000)
 
@@ -23,19 +23,19 @@ def main() -> int:
         all_rows = rows()
         print("rows unfiltered:", all_rows, "| charge total:", page.locator("#cards .card").nth(4).inner_text().replace("\n", " "))
 
-        # R-1001 has $10 already billed by Turo, so only the shortfall is charged.
+        # R-1001 has $10 already already billed, so only the shortfall is charged.
         r1001 = page.locator("#chargeTable tr", has_text="R-1001").first
         cells = r1001.locator("td").all_inner_texts()
         print("R-1001 row:", cells)
         assert cells[6] == "$16.35" and cells[7] == "$10.00" and cells[8] == "$6.35", cells
 
-        # trips Turo already settled are hidden until the default toggle is cleared
+        # trips already settled are hidden until the default toggle is cleared
         assert page.is_checked("#fSettled")
         assert page.locator("#chargeTable tr", has_text="R-1005").count() == 0
         page.uncheck("#fSettled")
         page.wait_for_timeout(300)
 
-        # R-1005 matched no toll but Turo collected $4 on it: still listed, $0 owed.
+        # R-1005 matched no toll but the marketplace collected $4 on it: still listed, $0 owed.
         paid = page.locator("#chargeTable tr", has_text="R-1005").first.locator("td").all_inner_texts()
         print("R-1005 row:", paid)
         assert paid[5] == "0" and paid[7] == "$4.00" and paid[8] == "$0.00", paid
@@ -160,7 +160,7 @@ def main() -> int:
         page.reload(wait_until="load")
         note = page.locator("#tripCacheNote").inner_text()
         print("cached trip file:", note)
-        assert "turo_trips.csv" in note, note
+        assert "trips.csv" in note, note
         page.set_input_files("#tollFiles", str(HERE / "toll_bill.pdf"))
         page.click("#parseBtn")
         page.wait_for_selector("#chargeTable tr:nth-child(2)", timeout=120_000)

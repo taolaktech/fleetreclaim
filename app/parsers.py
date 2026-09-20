@@ -1,4 +1,4 @@
-"""Extraction of toll line items and Turo trips from user-supplied files."""
+"""Extraction of toll line items and trips from user-supplied files."""
 
 import io
 import re
@@ -15,7 +15,7 @@ import pytesseract
 from PIL import Image
 
 MONEY = re.compile(r"\$?\s?(\d{1,3}(?:,\d{3})*\.\d{2})")
-# Turo vehicle labels embed the plate, e.g. "Taofeek's Nissan (TX #VCG6008)".
+# Marketplace vehicle labels embed the plate, e.g. "Taofeek's Nissan (TX #VCG6008)".
 EMBEDDED_PLATE = re.compile(r"#\s*([A-Z0-9][A-Z0-9 -]{2,10})", re.IGNORECASE)
 PLATE = re.compile(r"\b[A-Z0-9][A-Z0-9-]{4,8}\b")
 DATE_PATTERNS = [
@@ -80,7 +80,7 @@ class Trip:
     start: str         # ISO yyyy-mm-ddTHH:MM or yyyy-mm-dd
     end: str
     raw: dict[str, Any]
-    already_charged: float = 0.0   # Turo's own "Tolls & tickets" charge for the trip
+    already_charged: float = 0.0   # the marketplace's own "Tolls & tickets" charge
 
     def dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -428,7 +428,7 @@ def _clean_plate(value: str) -> str:
 
 
 def _plate_from_vehicle(vehicle: str) -> str:
-    """Pull the plate out of a Turo vehicle label such as "Nissan (TX #VCG6008)"."""
+    """Pull the plate out of a vehicle label such as "Nissan (TX #VCG6008)"."""
     match = EMBEDDED_PLATE.search(vehicle)
     if match:
         return _clean_plate(match.group(1).split(")")[0])

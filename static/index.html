@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Tolls/tickets ↔ Turo matcher</title>
+<title>Tolls/tickets ↔ trips matcher</title>
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --line:#272b35; --text:#e7e9ee; --muted:#9aa3b2; --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#4c8dff; }
   * { box-sizing: border-box; }
@@ -48,8 +48,8 @@
 </head>
 <body>
 <header>
-  <h1>Tolls/tickets ↔ Turo matcher</h1>
-  <p>Upload a tolls/tickets bill (PDF/image) and your Turo trip export. Charges are matched to trips by plate and timestamp.</p>
+  <h1>Tolls/tickets ↔ trips matcher</h1>
+  <p>Upload a tolls/tickets bill (PDF/image) and your marketplace trip export. Charges are matched to trips by plate and timestamp.</p>
 </header>
 <main>
   <section>
@@ -60,7 +60,7 @@
         <input id="tollFiles" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.csv,.txt" />
       </div>
       <div>
-        <label>Turo trips — CSV or XLSX</label>
+        <label>Trips export — CSV or XLSX</label>
         <input id="tripFile" type="file" accept=".csv,.xlsx,.xls" />
         <p class="muted" id="tripCacheNote" style="margin:6px 0 0"></p>
       </div>
@@ -88,7 +88,7 @@
       <div style="align-self:end">
         <label class="row" style="gap:6px; margin:0">
           <input id="fSettled" type="checkbox" style="width:auto" checked />
-          Hide trips Turo already settled
+          Hide trips already settled
         </label>
       </div>
       <div style="align-self:end"><button id="clearFilters" class="secondary">Clear filters</button></div>
@@ -169,7 +169,7 @@ function settings() {
 
 // The trip export rarely changes while resolving a bill, so keep it for the
 // browser session (sessionStorage clears itself when the browser closes).
-const TRIP_CACHE = 'turoTripFile';
+const TRIP_CACHE = 'tripExportFile';
 let cachedTrip = null;
 
 try { cachedTrip = JSON.parse(sessionStorage.getItem(TRIP_CACHE) || 'null'); } catch (e) { cachedTrip = null; }
@@ -267,7 +267,7 @@ function renderTolls() {
 
 function renderTrips() {
   $('tripCount').textContent = `(${trips.length})`;
-  const head = '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th><th>Tolls &amp; tickets charged by Turo</th></tr>';
+  const head = '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Start</th><th>End</th><th>Tolls &amp; tickets already charged</th></tr>';
   $('tripTable').innerHTML = head + trips.map((t, i) => `
     <tr>
       <td>${t.trip_id}</td><td>${t.guest}</td><td>${t.vehicle}</td>
@@ -337,10 +337,10 @@ function filtered() {
     bucket.toll_count += 1;
     bucket.toll_total = +(bucket.toll_total + Number(row.amount)).toFixed(2);
     bucket.gross_charge = +(bucket.gross_charge + Number(row.charge)).toFixed(2);
-    // Turo already billed part of this trip's tolls; only the shortfall is owed.
+    // The marketplace already billed part of this trip's tolls; only the shortfall is owed.
     bucket.charge_total = +Math.max(0, bucket.gross_charge - bucket.already_charged).toFixed(2);
   }
-  // Keep trips Turo already collected on visible even when no bill row matched them.
+  // Keep trips already collected on visible even when no bill row matched them.
   for (const t of trips) {
     const already = Number(t.already_charged || 0);
     if (already <= 0 || byTrip.has(t.trip_id)) continue;
@@ -353,7 +353,7 @@ function filtered() {
     byTrip.set(t.trip_id, { ...t, toll_count: 0, toll_total: 0, gross_charge: 0, charge_total: 0, already_charged: already });
   }
 
-  // Trips where Turo's charge already covers the bill leave nothing to collect.
+  // Trips where the marketplace charge already covers the bill leave nothing to collect.
   if (hideSettled) {
     for (const [id, t] of byTrip) {
       if (t.already_charged > 0 && t.charge_total === 0) byTrip.delete(id);
@@ -440,7 +440,7 @@ const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
 function tripCsv(trip, rows) {
   const items = tollsOf(trip.trip_id, rows);
   const lines = [
-    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','turo_charged','charge_total'].join(','),
+    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','already_charged','charge_total'].join(','),
     [trip.trip_id, trip.guest, trip.vehicle, trip.plate, trip.start, trip.end,
      items.length, trip.toll_total, trip.already_charged || 0, trip.charge_total].map(csvCell).join(','),
     '',
@@ -461,7 +461,7 @@ function openTripModal(trip, rows) {
   $('modalCards').innerHTML = `
     <div class="card"><span class="muted">Line items</span><b>${items.length}</b></div>
     <div class="card"><span class="muted">Tolls/tickets total</span><b>${money(trip.toll_total)}</b></div>
-    <div class="card"><span class="muted">Already charged by Turo</span><b>${money(trip.already_charged)}</b></div>
+    <div class="card"><span class="muted">Already charged</span><b>${money(trip.already_charged)}</b></div>
     <div class="card"><span class="muted">Charge guest</span><b>${money(trip.charge_total)}</b></div>`;
   $('modalTable').innerHTML =
     '<tr><th>Status</th><th>Matched on</th><th>Date</th><th>Time</th><th>Plate</th><th>Location</th><th>Amount</th><th>Charge</th></tr>' +
@@ -504,7 +504,7 @@ function renderResult(r) {
   if (resolvedHere) $('showAll').onclick = () => { resolvedTrips.clear(); renderResult(filtered()); };
 
   $('chargeTable').innerHTML =
-    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Items</th><th>Tolls/tickets total</th><th>Turo charged</th><th>Charge guest</th><th>Resolve</th></tr>' +
+    '<tr><th>Trip</th><th>Guest</th><th>Vehicle</th><th>Plate</th><th>Dates</th><th>Items</th><th>Tolls/tickets total</th><th>Already charged</th><th>Charge guest</th><th>Resolve</th></tr>' +
     (shown.length ? shown.map(t => `
       <tr><td>${t.trip_id}</td>
       <td>${t.guest}${t.toll_count ? ` <button type="button" class="toll-link" data-png="${t.trip_id}" title="View bill evidence">\u{1F9FE}</button>` : ''}</td>
@@ -556,7 +556,7 @@ $('exportBtn').onclick = () => {
       row.trip ? row.trip.vehicle : '', row.trip ? row.trip.start : '', row.trip ? row.trip.end : ''].map(cell).join(',')),
     '',
     'TRIP TOTALS',
-    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','turo_charged','charge_total'].join(','),
+    ['trip_id','guest','vehicle','plate','trip_start','trip_end','tolls','toll_total','already_charged','charge_total'].join(','),
     ...r.trips.map(t => [t.trip_id, t.guest, t.vehicle, t.plate, t.start, t.end, t.toll_count, t.toll_total, t.already_charged || 0, t.charge_total].map(cell).join(',')),
   ];
   download('toll-charges.csv', lines.join('\n'));

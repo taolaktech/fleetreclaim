@@ -1,4 +1,4 @@
-"""Match toll line items to Turo trips by plate and timestamp."""
+"""Match toll line items to trips by plate and timestamp."""
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -172,8 +172,8 @@ def match(
             }
         )
 
-    # Trips Turo already collected on stay listed even with no toll of their own,
-    # so the amounts Turo charged can still be checked.
+    # Trips already collected on stay listed even with no toll of their own,
+    # so those amounts can still be checked.
     for trip in trips:
         already = round(float(trip.get("already_charged") or 0), 2)
         if already <= 0 or trip["trip_id"] in by_trip:
@@ -192,7 +192,7 @@ def match(
             "tolls": [],
         }
 
-    # Turo may already have billed the guest for tolls; only the shortfall is owed.
+    # The marketplace may already have billed the guest for tolls; only the shortfall is owed.
     for bucket in by_trip.values():
         bucket["gross_charge"] = bucket["charge_total"]
         bucket["charge_total"] = round(
