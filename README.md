@@ -99,7 +99,7 @@ Endpoints, all behind `require_firebase_user`:
 | `POST /api/billing/portal` | hosted Customer Portal session |
 | `POST /api/stripe/webhook` | signature-verified events (public, verified by signature) |
 
-The browser sends a plan key (`starter`, `pro`) and never a Price ID, customer
+The browser sends a plan key (`monthly`, `yearly`) and never a Price ID, customer
 ID or subscription ID: the server resolves those from `app/billing.py`'s plan map
 and from the uid on the token. `/billing/success` confirms with Stripe rather
 than trusting the redirect, and checkout is refused when a live subscription
@@ -107,9 +107,9 @@ already exists.
 
 ### Stripe setup
 
-1. Products → add a product per plan, each with a **recurring** price; copy the
-   `price_…` ids into `STRIPE_PRICE_STARTER_MONTHLY` / `STRIPE_PRICE_PRO_MONTHLY`.
-   A plan with no configured price is not offered in the UI.
+1. Products → add one product with two **recurring** prices, monthly and yearly;
+   copy the `price_…` ids into `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY`.
+   An interval with no configured price is not offered in the UI.
 2. Developers → API keys → copy the secret key into `STRIPE_SECRET_KEY`
    (test key while developing, live key in production).
 3. Settings → Billing → Customer portal → activate it, and allow cancellation

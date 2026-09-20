@@ -41,10 +41,11 @@ class Plan:
         return os.environ.get(self.price_env, "")
 
 
-# Plan keys are the only thing the browser may send; price ids stay server-side.
+# One plan, two billing intervals. Plan keys are the only thing the browser may
+# send; price ids stay server-side.
 PLANS: dict[str, Plan] = {
-    "starter": Plan("starter", "Starter", "STRIPE_PRICE_STARTER_MONTHLY"),
-    "pro": Plan("pro", "Pro", "STRIPE_PRICE_PRO_MONTHLY"),
+    "monthly": Plan("monthly", "Monthly", "STRIPE_PRICE_MONTHLY"),
+    "yearly": Plan("yearly", "Yearly", "STRIPE_PRICE_YEARLY"),
 }
 
 

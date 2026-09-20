@@ -486,14 +486,14 @@ onBilling(b => {
   const until = formatDate(b.currentPeriodEnd);
   if (!b.hasSubscription || ['canceled', 'incomplete_expired'].includes(b.status)) {
     billingBody.innerHTML = b.plans.length
-      ? `<p style="margin:0 0 12px">Choose a plan to subscribe. Payment is handled by Stripe.</p>
-         <div class="row">${b.plans.map(p => `<button class="btn" data-plan="${esc(p.key)}">Subscribe to ${esc(p.name)}</button>`).join('')}</div>`
+      ? `<p style="margin:0 0 12px">Choose how you want to be billed. Payment is handled by Stripe.</p>
+         <div class="row">${b.plans.map(p => `<button class="btn" data-plan="${esc(p.key)}">${esc(p.name)}</button>`).join('')}</div>`
       : '<p class="muted" style="margin:0">No plans are configured yet.</p>';
     return;
   }
 
   const rows = [
-    ['Plan', b.planName || '—'],
+    ['Billing', b.planName || '—'],
     ['Status', STATUS_TEXT[b.status] || b.status],
     [b.cancelAtPeriodEnd ? 'Access until' : 'Next billing date', until || '—'],
   ];

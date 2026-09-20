@@ -26,8 +26,8 @@ ADMIN_ENV = {
 STRIPE_ENV = {
     "STRIPE_SECRET_KEY": "sk_test_fake",
     "STRIPE_WEBHOOK_SECRET": "whsec_fake",
-    "STRIPE_PRICE_STARTER_MONTHLY": "price_starter",
-    "STRIPE_PRICE_PRO_MONTHLY": "price_pro",
+    "STRIPE_PRICE_MONTHLY": "price_monthly",
+    "STRIPE_PRICE_YEARLY": "price_yearly",
 }
 ALICE = AuthUser(uid="uid-alice", email="alice@example.com", name="Alice")
 BOB = AuthUser(uid="uid-bob", email="bob@example.com", name="Bob")
@@ -116,7 +116,7 @@ class FakeStripe:
         self.customers.append(customer)
         return customer
 
-    def add_subscription(self, customer_id: str, status: str, price="price_pro", **extra) -> Obj:
+    def add_subscription(self, customer_id: str, status: str, price="price_yearly", **extra) -> Obj:
         sub = Obj(
             id=f"sub_{len(self.subscriptions)}",
             customer=customer_id,
@@ -145,7 +145,7 @@ def test_billing_endpoints_reject_anonymous_callers() -> None:
     client = TestClient(app)
     for path in ["/api/billing/checkout", "/api/billing/cancel", "/api/billing/resume",
                  "/api/billing/portal"]:
-        assert client.post(path, json={"plan": "pro"}).status_code == 401, path
+        assert client.post(path, json={"plan": "yearly"}).status_code == 401, path
     assert client.get("/api/billing/status").status_code == 401
 
 
@@ -153,7 +153,7 @@ def test_status_is_empty_without_a_stripe_customer() -> None:
     setup(**STRIPE_ENV)
     state = billing.subscription_status(ALICE)
     assert state["hasSubscription"] is False and state["isActive"] is False
-    assert [p["key"] for p in state["plans"]] == ["starter", "pro"]
+    assert [p["key"] for p in state["plans"]] == ["monthly", "yearly"]
 
 
 def test_status_reflects_the_users_own_subscription_only() -> None:
@@ -162,7 +162,7 @@ def test_status_reflects_the_users_own_subscription_only() -> None:
     fake.add_customer(BOB)
 
     alice = billing.subscription_status(ALICE)
-    assert alice["isActive"] is True and alice["plan"] == "pro"
+    assert alice["isActive"] is True and alice["plan"] == "yearly"
     assert billing.subscription_status(BOB)["hasSubscription"] is False
 
 
@@ -185,8 +185,8 @@ def test_period_end_falls_back_to_the_subscription_item() -> None:
 
 
 def test_unknown_and_unconfigured_plans_are_refused() -> None:
-    setup(STRIPE_SECRET_KEY="sk_test_fake", STRIPE_PRICE_PRO_MONTHLY="price_pro")
-    for plan in ["enterprise", "starter", "price_pro", ""]:
+    setup(STRIPE_SECRET_KEY="sk_test_fake", STRIPE_PRICE_YEARLY="price_yearly")
+    for plan in ["enterprise", "monthly", "price_yearly", ""]:
         try:
             billing.create_checkout(ALICE, plan, "http://localhost:8080")
         except HTTPException as exc:
@@ -197,11 +197,11 @@ def test_unknown_and_unconfigured_plans_are_refused() -> None:
 
 def test_checkout_uses_the_uid_customer_and_server_side_price() -> None:
     fake = setup(**STRIPE_ENV)
-    url = billing.create_checkout(ALICE, "pro", "http://localhost:8080")
+    url = billing.create_checkout(ALICE, "yearly", "http://localhost:8080")
     assert url == "https://checkout.stripe.test/session"
     args = fake.checkout_args
     assert args["mode"] == "subscription"
-    assert args["line_items"] == [{"price": "price_pro", "quantity": 1}]
+    assert args["line_items"] == [{"price": "price_yearly", "quantity": 1}]
     assert args["customer"] == fake.customers[0].id
     assert fake.customers[0]["metadata"][billing.UID_KEY] == ALICE.uid
     assert fake.idempotency_keys == [f"customer:{ALICE.uid}"]
@@ -210,7 +210,7 @@ def test_checkout_uses_the_uid_customer_and_server_side_price() -> None:
 def test_existing_customer_is_reused_across_sessions() -> None:
     fake = setup(**STRIPE_ENV)
     existing = fake.add_customer(ALICE)
-    billing.create_checkout(ALICE, "pro", "http://localhost:8080")
+    billing.create_checkout(ALICE, "yearly", "http://localhost:8080")
     assert len(fake.customers) == 1 and fake.checkout_args["customer"] == existing.id
 
 
@@ -218,7 +218,7 @@ def test_second_subscription_is_blocked() -> None:
     fake = setup(**STRIPE_ENV)
     fake.add_subscription(fake.add_customer(ALICE).id, "active")
     try:
-        billing.create_checkout(ALICE, "pro", "http://localhost:8080")
+        billing.create_checkout(ALICE, "yearly", "http://localhost:8080")
     except HTTPException as exc:
         assert exc.status_code == 409
     else:
@@ -302,7 +302,7 @@ def test_no_stripe_secret_reaches_the_browser() -> None:
     setup(**ADMIN_ENV, **STRIPE_ENV)
     body = TestClient(app).get("/api/config").text
     assert "sk_test_fake" not in body and "whsec_fake" not in body
-    assert "price_pro" not in body
+    assert "price_yearly" not in body
     static = Path(__file__).resolve().parent.parent / "static"
     for path in static.glob("*"):
         if path.is_file():

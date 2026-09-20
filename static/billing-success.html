@@ -54,7 +54,7 @@ async function confirm() {
     }
     if (state.isActive) {
       title.textContent = 'Subscription active';
-      detail.textContent = `Your ${state.planName ? state.planName + ' plan' : 'subscription'} is live. Thanks for subscribing.`;
+      detail.textContent = `Your ${state.planName ? state.planName.toLowerCase() + ' ' : ''}subscription is live. Thanks for subscribing.`;
       return;
     }
     if (state.status === 'past_due' || state.status === 'unpaid') {
