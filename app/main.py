@@ -35,7 +35,8 @@ class CropRequest(BaseModel):
     parse_id: str
     title: str = ""
     subtitle: str = ""
-    items: list[CropItem]
+    items: list[CropItem] = []
+    lines: list[str] = []      # rendered instead when the bill has no locatable rows
 
 
 class MatchRequest(BaseModel):
@@ -97,6 +98,30 @@ def _font(size: int) -> ImageFont.ImageFont:
         return ImageFont.load_default()
 
 
+def _render_lines(lines: list[str]) -> Image.Image:
+    """Draw plain bill lines as an image, for bills with no page layout (CSV/text)."""
+    font = _font(22)
+    pad, step = 12, 34
+    measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    width = max(int(measure.textlength(line, font=font)) for line in lines) + pad * 2
+    sheet = Image.new("RGB", (width, step * len(lines) + pad * 2), "white")
+    draw = ImageDraw.Draw(sheet)
+    for index, line in enumerate(lines):
+        draw.text((pad, pad + index * step), line, fill="black", font=font)
+    return sheet
+
+
+@app.get("/api/page")
+def bill_page(parse_id: str, source: str, page: int) -> Response:
+    """One rendered page of an uploaded bill, for previewing the raw document."""
+    pages = (PAGES.get(parse_id) or {}).get(source) or []
+    if not 0 <= page < len(pages):
+        raise HTTPException(status_code=404, detail="That bill page is no longer in memory.")
+    buffer = io.BytesIO()
+    pages[page].save(buffer, format="PNG")
+    return Response(content=buffer.getvalue(), media_type="image/png")
+
+
 @app.post("/api/crop")
 def crop(request: CropRequest) -> Response:
     """Stack this trip's rows from the original bill into one screenshot-ready PNG."""
@@ -123,7 +148,9 @@ def crop(request: CropRequest) -> Response:
             )
         )
     if not crops:
-        raise HTTPException(status_code=404, detail="No bill rows available for this trip.")
+        if not request.lines:
+            raise HTTPException(status_code=404, detail="No bill rows available for this trip.")
+        crops = [_render_lines(request.lines)]
 
     gap, margin = 10, 16
     head = 52 + (30 if request.subtitle else 0) if request.title else 0

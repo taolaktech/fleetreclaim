@@ -39,6 +39,9 @@
   .modal { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; width:min(900px,100%); }
   .modal h3 { margin:0 0 4px; font-size:16px; }
   .modal .cards { margin:14px 0; }
+  .bill { margin-top:16px; display:grid; gap:8px; }
+  .bill img { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  .bill pre { white-space:pre-wrap; background:#0f1115; border:1px solid var(--line); border-radius:6px; padding:10px; margin:0; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   details summary { cursor:pointer; color:var(--muted); }
   pre { white-space:pre-wrap; background:#0d1017; padding:10px; border-radius:6px; max-height:300px; overflow:auto; font-size:12px; }
@@ -132,6 +135,7 @@
       </div>
       <div class="cards" id="modalCards"></div>
       <table id="modalTable"></table>
+      <div id="modalBill" class="bill"></div>
     </div>
   </div>
 
@@ -303,25 +307,67 @@ function downloadBlob(name, blob) {
 const download = (name, text) =>
   downloadBlob(name, new Blob([text], { type: 'text/csv' }));
 
+/** What of the original bill we can show for a trip: located rows, else raw lines. */
+function billSource(trip, rows) {
+  const items = tollsOf(trip.trip_id, rows);
+  return {
+    items: items
+      .filter(row => row.box && row.page >= 0)
+      .sort((a, b) => a.page - b.page || a.box[1] - b.box[1])
+      .map(row => ({ source: row.source, page: row.page, box: row.box })),
+    lines: items.map(row => row.raw || '').filter(Boolean),
+    sources: [...new Set(items.map(row => row.source))],
+  };
+}
+
 /** Crop this trip's rows out of the original bill, stacked into one PNG. */
 async function tripPng(trip, rows) {
-  const items = tollsOf(trip.trip_id, rows)
-    .filter(row => row.box && row.page >= 0)
-    .sort((a, b) => a.page - b.page || a.box[1] - b.box[1])
-    .map(row => ({ source: row.source, page: row.page, box: row.box }));
-  if (!items.length) {
-    alert('No image rows for this trip — the bill was a CSV/text file, or these rows came from a table without positions.');
+  const { items, lines } = billSource(trip, rows);
+  if (!items.length && !lines.length) {
+    alert('Nothing from the uploaded bill is available for this trip.');
     return;
   }
   const res = await fetch('/api/crop', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ parse_id: parseId, items }),
+    body: JSON.stringify({ parse_id: parseId, items, lines }),
   });
   if (!res.ok) {
     alert((await res.json().catch(() => ({}))).detail || 'Could not build the image.');
     return;
   }
   downloadBlob(`tolls-${trip.trip_id}.png`, await res.blob());
+}
+
+const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+/** Preview of the upload in the modal: cropped rows, else the document as uploaded. */
+async function renderBillPreview(trip, rows) {
+  const { items, lines, sources } = billSource(trip, rows);
+  const box = $('modalBill');
+  box.innerHTML = '<div class="muted">Loading the uploaded bill…</div>';
+  if (items.length) {
+    const res = await fetch('/api/crop', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parse_id: parseId, items }),
+    });
+    if (res.ok) {
+      const url = URL.createObjectURL(await res.blob());
+      box.innerHTML = '<div class="muted">From the uploaded bill</div>' +
+        `<img src="${url}" alt="bill rows" />`;
+      return;
+    }
+  }
+  // Rows without a position on the page (CSV/text bills, table-only PDFs): show
+  // the uploaded page if there is one, plus the lines exactly as they arrived.
+  const pageTags = sources.map(source => {
+    const url = `/api/page?parse_id=${encodeURIComponent(parseId)}` +
+      `&source=${encodeURIComponent(source)}&page=0`;
+    return `<img src="${url}" alt="${escapeHtml(source)}" onerror="this.remove()" />`;
+  }).join('');
+  box.innerHTML =
+    '<div class="muted">Uploaded bill (no row positions in this file)</div>' +
+    pageTags +
+    (lines.length ? `<pre>${escapeHtml(lines.join('\n'))}</pre>` : '');
 }
 
 const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -361,6 +407,7 @@ function openTripModal(trip, rows) {
   $('modalCsv').onclick = () => tripCsv(trip, rows);
   $('modalPng').onclick = () => tripPng(trip, rows);
   $('tripModal').classList.remove('hidden');
+  renderBillPreview(trip, rows);
 }
 
 const closeModal = () => $('tripModal').classList.add('hidden');
